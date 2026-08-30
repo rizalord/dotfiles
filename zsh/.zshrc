@@ -8,6 +8,7 @@ setopt append_history share_history hist_ignore_dups hist_ignore_space
 
 autoload -Uz compinit
 compinit
+bindkey -e
 
 : "${EDITOR:=vim}"
 : "${VISUAL:=$EDITOR}"
