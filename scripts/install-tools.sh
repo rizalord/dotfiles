@@ -69,6 +69,14 @@ else
   for required_tool in mise colima docker gh glab; do
     log "dry-run: would verify prerequisite: $required_tool"
   done
+  log 'dry-run: would verify Docker Buildx: docker buildx version'
+fi
+
+if [ "$DRY_RUN" = false ]; then
+  if ! docker buildx version >/dev/null 2>&1; then
+    printf 'missing prerequisite: Docker Buildx. Install the docker-buildx plugin, then rerun this script.\n' >&2
+    exit 1
+  fi
 fi
 
 export NPM_CONFIG_PREFIX="$HOME/.local"

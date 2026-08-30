@@ -188,6 +188,7 @@ fi
 for tool in brew mise gh glab codex claude code colima docker fzf zoxide starship; do
   check_optional_command "$tool" command -v "$tool"
 done
+check_optional_command 'docker buildx' docker buildx version
 check_optional_command 'docker compose' docker compose version
 
 if [ "$CHECK_INSTALLED" = true ]; then

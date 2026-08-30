@@ -61,10 +61,13 @@ bash -n "$CHECKER"
 # probing a real user's tool installation.
 DRY_HOME="$TMP_ROOT/dry-home"
 DRY_BIN="$TMP_ROOT/dry-bin"
+DRY_DOCKER_LOG="$TMP_ROOT/dry-docker.log"
 mkdir -p "$DRY_HOME" "$DRY_BIN"
+write_fake "$DRY_BIN" docker 'printf "dry-run invoked docker\n" >> "$DRY_DOCKER_LOG"; exit 99'
 DRY_OUTPUT=$(HOME="$DRY_HOME" PATH="$DRY_BIN:/usr/bin:/bin" \
-  bash "$INSTALLER" --dry-run --skip-brew 2>&1)
+  DRY_DOCKER_LOG="$DRY_DOCKER_LOG" bash "$INSTALLER" --dry-run --skip-brew 2>&1)
 assert_contains "$DRY_OUTPUT" 'Homebrew bundle skipped by --skip-brew.'
+assert_contains "$DRY_OUTPUT" 'docker buildx version'
 assert_contains "$DRY_OUTPUT" 'NPM_CONFIG_PREFIX='
 assert_contains "$DRY_OUTPUT" '@openai/codex'
 assert_contains "$DRY_OUTPUT" '@anthropic-ai/claude-code'
@@ -228,6 +231,32 @@ assert_contains "$(<"$STRICT_OUTPUT")" 'check: MISSING:'
 expect_failure "$STRICT_OUTPUT" env HOME="$STRICT_HOME" GIT_CONFIG_GLOBAL="$STRICT_GLOBAL" \
   PATH="/usr/bin:/bin" bash "$CHECKER" --strict-tools
 assert_contains "$(<"$STRICT_OUTPUT")" 'check: FAIL: tool missing:'
+
+# Docker Buildx and Compose are checked independently; Buildx participates in
+# strict mode just like the other optional tools.
+DOCKER_AVAILABLE_HOME="$TMP_ROOT/docker-available-home"
+DOCKER_AVAILABLE_BIN="$TMP_ROOT/docker-available-bin"
+DOCKER_AVAILABLE_GLOBAL="$TMP_ROOT/docker-available-global"
+mkdir -p "$DOCKER_AVAILABLE_HOME" "$DOCKER_AVAILABLE_BIN"
+write_fake "$DOCKER_AVAILABLE_BIN" docker 'if [ "${1:-}" = buildx ] && [ "${2:-}" = version ]; then printf "github.com/docker/buildx v0.0.0\n"; elif [ "${1:-}" = compose ] && [ "${2:-}" = version ]; then printf "Docker Compose version v0.0.0\n"; else exit 1; fi'
+DOCKER_AVAILABLE_OUTPUT=$(HOME="$DOCKER_AVAILABLE_HOME" GIT_CONFIG_GLOBAL="$DOCKER_AVAILABLE_GLOBAL" \
+  PATH="$DOCKER_AVAILABLE_BIN:/usr/bin:/bin" bash "$CHECKER" 2>&1)
+assert_contains "$DOCKER_AVAILABLE_OUTPUT" 'check: PASS: tool available: docker buildx'
+assert_contains "$DOCKER_AVAILABLE_OUTPUT" 'check: PASS: tool available: docker compose'
+
+DOCKER_MISSING_HOME="$TMP_ROOT/docker-missing-home"
+DOCKER_MISSING_BIN="$TMP_ROOT/docker-missing-bin"
+DOCKER_MISSING_GLOBAL="$TMP_ROOT/docker-missing-global"
+mkdir -p "$DOCKER_MISSING_HOME" "$DOCKER_MISSING_BIN"
+write_fake "$DOCKER_MISSING_BIN" docker 'if [ "${1:-}" = compose ] && [ "${2:-}" = version ]; then printf "Docker Compose version v0.0.0\n"; else exit 1; fi'
+DOCKER_MISSING_OUTPUT=$(HOME="$DOCKER_MISSING_HOME" GIT_CONFIG_GLOBAL="$DOCKER_MISSING_GLOBAL" \
+  PATH="$DOCKER_MISSING_BIN:/usr/bin:/bin" bash "$CHECKER" 2>&1)
+assert_contains "$DOCKER_MISSING_OUTPUT" 'check: MISSING: docker buildx'
+DOCKER_STRICT_OUTPUT="$TMP_ROOT/docker-strict-output"
+expect_failure "$DOCKER_STRICT_OUTPUT" env HOME="$DOCKER_MISSING_HOME" \
+  GIT_CONFIG_GLOBAL="$DOCKER_MISSING_GLOBAL" PATH="$DOCKER_MISSING_BIN:/usr/bin:/bin" \
+  bash "$CHECKER" --strict-tools
+assert_contains "$(<"$DOCKER_STRICT_OUTPUT")" 'check: FAIL: tool missing: docker buildx'
 
 # The unchanged policy examples are allowed for every forbidden marker.
 BASE_CHECK_OUTPUT=$(HOME="$STRICT_HOME" GIT_CONFIG_GLOBAL="$STRICT_GLOBAL" \
