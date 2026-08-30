@@ -125,48 +125,54 @@ else
   fail 'shared Git configuration is invalid'
 fi
 
-private_key_pattern='BEGIN '
-private_key_pattern="${private_key_pattern}.* PRIVATE KEY"
-known_example_path='docs/superpowers/plans/2026-08-30-dotfiles-foundation.md'
+readonly private_key_prefix='BEGIN '
+readonly private_key_suffix='.* PRIVATE KEY'
+readonly private_key_pattern="${private_key_prefix}${private_key_suffix}"
+readonly path_marker="/Users/"'rizalord'
+readonly openai_marker="OPENAI_API_KEY"'='
+readonly anthropic_marker="ANTHROPIC_API_KEY"'='
+readonly github_marker='gho''_'
+readonly gitlab_marker='glpat''-'
+readonly known_policy_path='docs/superpowers/plans/2026-08-30-dotfiles-foundation.md'
+readonly known_policy_line_1="membuat shell gagal start. Jangan menulis path ${path_marker}."
+readonly known_policy_line_2="memeriksa manifest, dan mencari pola yang dilarang: ${path_marker},"
+readonly known_policy_line_3="${openai_marker}, ${anthropic_marker}, ${github_marker}, ${gitlab_marker}, ${private_key_pattern},"
+readonly known_policy_line_4="    git ls-files -z | xargs -0 rg -n '${openai_marker}|${anthropic_marker}|${gitlab_marker}|${github_marker}|${path_marker}|BEGIN .*PRIVATE KEY' || true"
 
 security_match_is_known_example() {
-  local match="$1"
-  local path="${match%%:*}"
-  local remainder="${match#*:}"
-  local line_number="${remainder%%:*}"
-  local line_text="${remainder#*:}"
-  local baseline
+  local path="$1"
+  local line_text="$2"
 
-  case "$path:$line_number" in
-    "$known_example_path:231"|"$known_example_path:477"|"$known_example_path:478"|"$known_example_path:611")
-      baseline=$(git -C "$ROOT_DIR" show "HEAD:$path" 2>/dev/null | sed -n "${line_number}p") || return 1
-      [ "$line_text" = "$baseline" ]
-      ;;
-    *)
-      return 1
-      ;;
-  esac
+  [ "$path" = "$known_policy_path" ] || return 1
+  [ "$line_text" = "$known_policy_line_1" ] && return 0
+  [ "$line_text" = "$known_policy_line_2" ] && return 0
+  [ "$line_text" = "$known_policy_line_3" ] && return 0
+  [ "$line_text" = "$known_policy_line_4" ] && return 0
+  return 1
 }
 
 for forbidden_pattern in \
-  "/Users/"'rizalord' \
-  "OPENAI_API_KEY"'=' \
-  "ANTHROPIC_API_KEY"'=' \
-  'gho''_' \
-  'glpat''-' \
+  "$path_marker" \
+  "$openai_marker" \
+  "$anthropic_marker" \
+  "$github_marker" \
+  "$gitlab_marker" \
   "$private_key_pattern"; do
-  security_matches=$(git -C "$ROOT_DIR" grep -nE -- "$forbidden_pattern" -- . 2>/dev/null || true)
-  unexpected_matches=''
-  if [ -n "$security_matches" ]; then
-    while IFS= read -r security_match; do
-      [ -n "$security_match" ] || continue
-      if security_match_is_known_example "$security_match"; then
-        continue
-      fi
-      unexpected_matches="${unexpected_matches}${security_match}"$'\n'
-    done <<<"$security_matches"
+  matching_paths=$(git -C "$ROOT_DIR" grep -lE -- "$forbidden_pattern" -- . 2>/dev/null || true)
+  security_violation=false
+  if [ -n "$matching_paths" ]; then
+    while IFS= read -r tracked_path; do
+      [ -n "$tracked_path" ] || continue
+      while IFS= read -r tracked_line || [ -n "$tracked_line" ]; do
+        if [[ "$tracked_line" =~ $forbidden_pattern ]] \
+          && ! security_match_is_known_example "$tracked_path" "$tracked_line"; then
+          security_violation=true
+          break 2
+        fi
+      done < "$ROOT_DIR/$tracked_path"
+    done <<<"$matching_paths"
   fi
-  if [ -n "$unexpected_matches" ]; then
+  if [ "$security_violation" = true ]; then
     fail "forbidden tracked content matches: $forbidden_pattern"
   else
     pass "security pattern absent: $forbidden_pattern"

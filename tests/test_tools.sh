@@ -7,6 +7,14 @@ CHECKER="$ROOT_DIR/scripts/check.sh"
 TMP_ROOT=$(mktemp -d)
 trap 'rm -rf -- "$TMP_ROOT"' EXIT
 
+PATH_MARKER="/Users/"'rizalord'
+OPENAI_MARKER="OPENAI_API_KEY"'='
+ANTHROPIC_MARKER="ANTHROPIC_API_KEY"'='
+GH_MARKER='gho''_'
+GLAB_MARKER='glpat''-'
+PRIVATE_KEY_MARKER='BEGIN '
+PRIVATE_KEY_MARKER="${PRIVATE_KEY_MARKER}.* PRIVATE KEY"
+
 assert_contains() {
   local text="$1"
   local expected="$2"
@@ -146,6 +154,14 @@ check_installed() {
     PATH="/usr/bin:/bin" bash "$CHECKER" --installed "$@"
 }
 
+check_installed_default() {
+  local home_dir="$1"
+  local global_config="$2"
+  shift 2
+  env -u XDG_CONFIG_HOME HOME="$home_dir" GIT_CONFIG_GLOBAL="$global_config" \
+    PATH="/usr/bin:/bin" bash "$CHECKER" --installed "$@"
+}
+
 assert_exact_links() {
   local home_dir="$1"
   local config_dir="$2"
@@ -163,11 +179,11 @@ DEFAULT_HOME="$TMP_ROOT/default-home"
 DEFAULT_CONFIG="$DEFAULT_HOME/.config"
 DEFAULT_GLOBAL="$TMP_ROOT/default-global"
 mkdir -p "$DEFAULT_HOME"
-HOME="$DEFAULT_HOME" XDG_CONFIG_HOME="$DEFAULT_CONFIG" GIT_CONFIG_GLOBAL="$DEFAULT_GLOBAL" \
+env -u XDG_CONFIG_HOME HOME="$DEFAULT_HOME" GIT_CONFIG_GLOBAL="$DEFAULT_GLOBAL" \
   PATH="/usr/bin:/bin" bash "$ROOT_DIR/install.sh" >/dev/null
-check_installed "$DEFAULT_HOME" "$DEFAULT_CONFIG" "$DEFAULT_GLOBAL"
+check_installed_default "$DEFAULT_HOME" "$DEFAULT_GLOBAL"
 assert_exact_links "$DEFAULT_HOME" "$DEFAULT_CONFIG"
-DEFAULT_INCLUDE=$(HOME="$DEFAULT_HOME" XDG_CONFIG_HOME="$DEFAULT_CONFIG" \
+DEFAULT_INCLUDE=$(env -u XDG_CONFIG_HOME HOME="$DEFAULT_HOME" \
   GIT_CONFIG_GLOBAL="$DEFAULT_GLOBAL" git config --global --get-all include.path)
 test "$DEFAULT_INCLUDE" = '~/.config/git/dotfiles.gitconfig'
 
@@ -212,6 +228,53 @@ assert_contains "$(<"$STRICT_OUTPUT")" 'check: MISSING:'
 expect_failure "$STRICT_OUTPUT" env HOME="$STRICT_HOME" GIT_CONFIG_GLOBAL="$STRICT_GLOBAL" \
   PATH="/usr/bin:/bin" bash "$CHECKER" --strict-tools
 assert_contains "$(<"$STRICT_OUTPUT")" 'check: FAIL: tool missing:'
+
+# The unchanged policy examples are allowed for every forbidden marker.
+BASE_CHECK_OUTPUT=$(HOME="$STRICT_HOME" GIT_CONFIG_GLOBAL="$STRICT_GLOBAL" \
+  PATH="/usr/bin:/bin" bash "$CHECKER" 2>&1)
+for marker in "$PATH_MARKER" "$OPENAI_MARKER" "$ANTHROPIC_MARKER" "$GH_MARKER" \
+  "$GLAB_MARKER" "$PRIVATE_KEY_MARKER"; do
+  assert_contains "$BASE_CHECK_OUTPUT" "security pattern absent: $marker"
+done
+
+# Moving an allowed line must not invalidate it: the allowlist is content-based.
+SHIFT_REPO="$TMP_ROOT/shifted-policy-repo"
+SHIFT_HOME="$TMP_ROOT/shifted-policy-home"
+SHIFT_GLOBAL="$TMP_ROOT/shifted-policy-global"
+git clone --quiet "$ROOT_DIR" "$SHIFT_REPO"
+cp "$CHECKER" "$SHIFT_REPO/scripts/check.sh"
+SHIFT_MARKER='OPENAI_API_KEY'
+awk -v marker="$SHIFT_MARKER" 'index($0, marker) { print ""; print "" } { print }' \
+  "$SHIFT_REPO/docs/superpowers/plans/2026-08-30-dotfiles-foundation.md" \
+  > "$TMP_ROOT/shifted-policy.md"
+mv "$TMP_ROOT/shifted-policy.md" "$SHIFT_REPO/docs/superpowers/plans/2026-08-30-dotfiles-foundation.md"
+mkdir -p "$SHIFT_HOME"
+SHIFT_OUTPUT=$(HOME="$SHIFT_HOME" GIT_CONFIG_GLOBAL="$SHIFT_GLOBAL" \
+  PATH="/usr/bin:/bin" bash "$SHIFT_REPO/scripts/check.sh" 2>&1)
+for marker in "$PATH_MARKER" "$OPENAI_MARKER" "$ANTHROPIC_MARKER" "$GH_MARKER" \
+  "$GLAB_MARKER" "$PRIVATE_KEY_MARKER"; do
+  assert_contains "$SHIFT_OUTPUT" "security pattern absent: $marker"
+done
+
+# Tampering with one allowed line must make every marker on that line fail.
+TAMPER_REPO="$TMP_ROOT/tampered-policy-repo"
+TAMPER_HOME="$TMP_ROOT/tampered-policy-home"
+TAMPER_GLOBAL="$TMP_ROOT/tampered-policy-global"
+git clone --quiet "$ROOT_DIR" "$TAMPER_REPO"
+cp "$CHECKER" "$TAMPER_REPO/scripts/check.sh"
+TAMPER_MARKER='OPENAI_API_KEY'
+awk -v marker="$TAMPER_MARKER" 'index($0, marker) { print $0 " tampered"; next } { print }' \
+  "$TAMPER_REPO/docs/superpowers/plans/2026-08-30-dotfiles-foundation.md" \
+  > "$TMP_ROOT/tampered-policy.md"
+mv "$TMP_ROOT/tampered-policy.md" "$TAMPER_REPO/docs/superpowers/plans/2026-08-30-dotfiles-foundation.md"
+mkdir -p "$TAMPER_HOME"
+TAMPER_OUTPUT="$TMP_ROOT/tampered-policy-output"
+expect_failure "$TAMPER_OUTPUT" env HOME="$TAMPER_HOME" GIT_CONFIG_GLOBAL="$TAMPER_GLOBAL" \
+  PATH="/usr/bin:/bin" bash "$TAMPER_REPO/scripts/check.sh"
+for marker in "$PATH_MARKER" "$OPENAI_MARKER" "$ANTHROPIC_MARKER" "$GH_MARKER" \
+  "$GLAB_MARKER" "$PRIVATE_KEY_MARKER"; do
+  assert_contains "$(<"$TAMPER_OUTPUT")" "forbidden tracked content matches: $marker"
+done
 
 # Security scanning must still inspect an ordinary tracked file under docs;
 # only the exact, unchanged policy-example lines may be ignored.
