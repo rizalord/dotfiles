@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 INSTALLER="$ROOT_DIR/scripts/install-tools.sh"
 CHECKER="$ROOT_DIR/scripts/check.sh"
-TMP_ROOT=$(mktemp -d)
+TMP_ROOT=$(CDPATH= cd -- "$(mktemp -d)" && pwd -P)
 trap 'rm -rf -- "$TMP_ROOT"' EXIT
 
 PATH_MARKER="/Users/"'rizalord'
@@ -228,6 +228,39 @@ if [ -n "$JQ_BIN" ]; then
   MAC_DRY_EXISTING_AFTER=$(cksum "$MAC_DRY_EXISTING_CONFIG/config.json")
   test "$MAC_DRY_EXISTING_BEFORE" = "$MAC_DRY_EXISTING_AFTER"
   test ! -e "$MAC_DRY_EXISTING_BREW_LOG"
+
+  # Unsafe Docker config locations are rejected before any dry-run or real
+  # installer work. In particular, do not accept relative paths, the
+  # filesystem root, traversal components, repository paths, or symlinked
+  # parent directories.
+  MAC_SYMLINK_TARGET="$TMP_ROOT/mac-symlink-target"
+  MAC_SYMLINK_PARENT="$TMP_ROOT/mac-symlink-parent"
+  mkdir -p "$MAC_SYMLINK_TARGET"
+  ln -s "$MAC_SYMLINK_TARGET" "$MAC_SYMLINK_PARENT"
+  MAC_UNSAFE_PATHS=$(printf '%s\n' \
+    'relative-docker-config' \
+    '/' \
+    "$TMP_ROOT/../mac-traversal-config" \
+    "$ROOT_DIR" \
+    "$ROOT_DIR/.docker" \
+    "$MAC_SYMLINK_PARENT/config")
+  while IFS= read -r unsafe_path; do
+    MAC_UNSAFE_OUTPUT="$TMP_ROOT/mac-unsafe-output"
+    expect_failure "$MAC_UNSAFE_OUTPUT" env HOME="$MAC_HELPER_HOME" \
+      DOCKER_CONFIG="$unsafe_path" BREW_PREFIX="$MAC_HELPER_PREFIX" \
+      BREW_LOG="$MAC_HELPER_LOG" PATH="$MAC_HELPER_BIN:$JQ_DIR:/usr/bin:/bin" \
+      bash "$INSTALLER" --dry-run --skip-brew
+    assert_contains "$(<"$MAC_UNSAFE_OUTPUT")" 'invalid Docker config path'
+    expect_failure "$MAC_UNSAFE_OUTPUT" env HOME="$MAC_HELPER_HOME" \
+      DOCKER_CONFIG="$unsafe_path" BREW_PREFIX="$MAC_HELPER_PREFIX" \
+      BREW_LOG="$MAC_HELPER_LOG" PATH="$MAC_HELPER_BIN:$JQ_DIR:/usr/bin:/bin" \
+      bash "$INSTALLER" --skip-brew
+    assert_contains "$(<"$MAC_UNSAFE_OUTPUT")" 'invalid Docker config path'
+  done <<EOF
+$MAC_UNSAFE_PATHS
+EOF
+  test ! -e "$TMP_ROOT/mac-traversal-config"
+  test ! -e "$ROOT_DIR/.docker/config.json"
 
   # A fresh config is created with the exact discovered plugin directory.
   MAC_FRESH_CONFIG="$TMP_ROOT/mac-fresh-docker"

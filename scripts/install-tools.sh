@@ -48,6 +48,50 @@ read_file_mode() {
   esac
 }
 
+validate_docker_config_path() {
+  local config_dir="$1"
+  local normalized_path
+  local parent
+
+  case "$config_dir" in
+    /*) ;;
+    *)
+      printf 'invalid Docker config path: DOCKER_CONFIG must be an absolute path: %s\n' "$config_dir" >&2
+      return 1
+      ;;
+  esac
+
+  case "$config_dir" in
+    /|*'//'|*/./*|*/.|*/../*|*/..)
+      printf 'invalid Docker config path: DOCKER_CONFIG contains a root, duplicate separator, or traversal component: %s\n' "$config_dir" >&2
+      return 1
+      ;;
+  esac
+
+  case "$config_dir" in
+    "$ROOT_DIR"|"$ROOT_DIR"/*)
+      printf 'invalid Docker config path: DOCKER_CONFIG must not point inside this repository: %s\n' "$config_dir" >&2
+      return 1
+      ;;
+  esac
+
+  normalized_path="$config_dir"
+  while [ "$normalized_path" != "/" ] && [ "${normalized_path%/}" != "$normalized_path" ]; do
+    normalized_path="${normalized_path%/}"
+  done
+  parent="$normalized_path"
+  while [ "$parent" != "/" ]; do
+    if [ -L "$parent" ]; then
+      printf 'invalid Docker config path: DOCKER_CONFIG has a symlinked parent directory: %s\n' "$config_dir" >&2
+      return 1
+    fi
+    parent="${parent%/*}"
+    if [ -z "$parent" ]; then
+      parent="/"
+    fi
+  done
+}
+
 configure_docker_cli_plugins() {
   local os_name
   local brew_prefix
@@ -65,6 +109,12 @@ configure_docker_cli_plugins() {
   fi
 
   docker_config_dir=${DOCKER_CONFIG:-"$HOME/.docker"}
+  if ! validate_docker_config_path "$docker_config_dir"; then
+    return 1
+  fi
+  while [ "$docker_config_dir" != "/" ] && [ "${docker_config_dir%/}" != "$docker_config_dir" ]; do
+    docker_config_dir="${docker_config_dir%/}"
+  done
   config_path="$docker_config_dir/config.json"
 
   if [ "$DRY_RUN" = true ]; then
