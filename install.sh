@@ -26,15 +26,50 @@ esac
 
 XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-"$HOME/.config"}
 BACKUP_ROOT="$HOME/.local/state/dotfiles-backups"
-BACKUP_DIR="$BACKUP_ROOT/$(date +%Y%m%d-%H%M%S)"
-GIT_INCLUDE='~/.config/git/dotfiles.gitconfig'
+BACKUP_TIMESTAMP=$(date +%Y%m%d-%H%M%S)
+BACKUP_DIR=''
+GIT_CONFIG_PATH="$XDG_CONFIG_HOME/git/dotfiles.gitconfig"
+if [ "$XDG_CONFIG_HOME" = "$HOME/.config" ]; then
+  GIT_INCLUDE='~/.config/git/dotfiles.gitconfig'
+else
+  GIT_INCLUDE="$GIT_CONFIG_PATH"
+fi
 
 log() {
   printf '%s\n' "$*"
 }
 
+ensure_backup_directory() {
+  local attempt=0
+  local candidate
+
+  if [ -n "$BACKUP_DIR" ]; then
+    return
+  fi
+
+  if [ "$DRY_RUN" = true ]; then
+    BACKUP_DIR="$BACKUP_ROOT/${BACKUP_TIMESTAMP}-$$"
+    return
+  fi
+
+  mkdir -p "$BACKUP_ROOT"
+  while :; do
+    candidate="$BACKUP_ROOT/${BACKUP_TIMESTAMP}-$$-$attempt"
+    if mkdir "$candidate" 2>/dev/null; then
+      BACKUP_DIR="$candidate"
+      return
+    fi
+    if [ ! -e "$candidate" ] && [ ! -L "$candidate" ]; then
+      printf 'failed to create backup directory: %s\n' "$candidate" >&2
+      return 1
+    fi
+    attempt=$((attempt + 1))
+  done
+}
+
 backup_existing() {
   local destination="$1"
+  ensure_backup_directory
   local backup_path="$BACKUP_DIR/$(basename "$destination")"
 
   if [ "$DRY_RUN" = true ]; then
@@ -42,7 +77,6 @@ backup_existing() {
     return
   fi
 
-  mkdir -p "$BACKUP_DIR"
   mv "$destination" "$backup_path"
   log "backed up $destination to $backup_path"
 }
