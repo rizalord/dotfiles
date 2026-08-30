@@ -61,28 +61,32 @@ else
   log 'Homebrew bundle skipped by --skip-brew.'
 fi
 
-if [ "$DRY_RUN" = true ]; then
+if [ "$DRY_RUN" = false ]; then
+  for required_tool in mise colima docker gh glab; do
+    require_command "$required_tool"
+  done
+else
   for required_tool in mise colima docker gh glab; do
     log "dry-run: would verify prerequisite: $required_tool"
   done
-  export NPM_CONFIG_PREFIX="$HOME/.local"
-  export PATH="$NPM_CONFIG_PREFIX/bin:$PATH"
-  log "NPM_CONFIG_PREFIX=$NPM_CONFIG_PREFIX"
-  run mkdir -p "$NPM_CONFIG_PREFIX/bin"
-  run mise use --global node@lts
-  run npm install --global @openai/codex
-  run npm install --global @anthropic-ai/claude-code
-  exit 0
 fi
 
-for required_tool in mise colima docker gh glab; do
-  require_command "$required_tool"
-done
+export NPM_CONFIG_PREFIX="$HOME/.local"
+export PATH="$NPM_CONFIG_PREFIX/bin:$PATH"
+log "NPM_CONFIG_PREFIX=$NPM_CONFIG_PREFIX"
 
 missing_ai_cli=false
 for ai_cli in codex claude; do
   if command -v "$ai_cli" >/dev/null 2>&1; then
-    log "$ai_cli already available; npm package installation is skipped."
+    if [ "$DRY_RUN" = true ]; then
+      if [ "$ai_cli" = codex ]; then
+        log 'codex already available; @openai/codex installation is skipped.'
+      else
+        log 'claude already available; @anthropic-ai/claude-code installation is skipped.'
+      fi
+    else
+      log "$ai_cli already available; npm package installation is skipped."
+    fi
   else
     missing_ai_cli=true
   fi
@@ -92,22 +96,26 @@ if [ "$missing_ai_cli" = false ]; then
   exit 0
 fi
 
-export NPM_CONFIG_PREFIX="$HOME/.local"
-export PATH="$NPM_CONFIG_PREFIX/bin:$PATH"
-log "NPM_CONFIG_PREFIX=$NPM_CONFIG_PREFIX"
 run mkdir -p "$NPM_CONFIG_PREFIX/bin"
 run mise use --global node@lts
 
-require_command npm
+if [ "$DRY_RUN" = true ]; then
+  run mise exec -- npm --version
+else
+  if ! mise exec -- npm --version >/dev/null 2>&1; then
+    printf 'missing prerequisite: mise-managed npm. Run "mise use --global node@lts" and ensure mise can execute npm, then rerun this script.\n' >&2
+    exit 1
+  fi
+fi
 
 if command -v codex >/dev/null 2>&1; then
   log 'codex already available; @openai/codex installation is skipped.'
 else
-  run npm install --global @openai/codex
+  run mise exec -- npm install --global @openai/codex
 fi
 
 if command -v claude >/dev/null 2>&1; then
   log 'claude already available; @anthropic-ai/claude-code installation is skipped.'
 else
-  run npm install --global @anthropic-ai/claude-code
+  run mise exec -- npm install --global @anthropic-ai/claude-code
 fi

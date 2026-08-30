@@ -62,6 +62,27 @@ check_optional_command() {
   fi
 }
 
+check_managed_link() {
+  local link_path="$1"
+  local expected_target="$2"
+  local actual_target
+
+  if [ ! -L "$link_path" ]; then
+    fail "managed link missing: $link_path"
+    return
+  fi
+
+  actual_target=$(readlink "$link_path") || {
+    fail "managed link target unreadable: $link_path"
+    return
+  }
+  if [ "$actual_target" = "$expected_target" ]; then
+    pass "managed link valid: $link_path"
+  else
+    fail "managed link target mismatch: $link_path (actual: $actual_target; expected: $expected_target)"
+  fi
+}
+
 check_file "$ROOT_DIR/.gitignore"
 check_file "$ROOT_DIR/Brewfile"
 check_file "$ROOT_DIR/git/.gitconfig"
@@ -90,7 +111,7 @@ if command -v zsh >/dev/null 2>&1; then
   done
 fi
 
-for shell_file in "$ROOT_DIR/install.sh" "$ROOT_DIR"/scripts/*.sh; do
+for shell_file in "$ROOT_DIR/install.sh" "$ROOT_DIR"/scripts/*.sh "$ROOT_DIR"/tests/*.sh; do
   if bash -n "$shell_file"; then
     pass "bash syntax: ${shell_file#$ROOT_DIR/}"
   else
@@ -104,14 +125,48 @@ else
   fail 'shared Git configuration is invalid'
 fi
 
+private_key_pattern='BEGIN '
+private_key_pattern="${private_key_pattern}.* PRIVATE KEY"
+known_example_path='docs/superpowers/plans/2026-08-30-dotfiles-foundation.md'
+
+security_match_is_known_example() {
+  local match="$1"
+  local path="${match%%:*}"
+  local remainder="${match#*:}"
+  local line_number="${remainder%%:*}"
+  local line_text="${remainder#*:}"
+  local baseline
+
+  case "$path:$line_number" in
+    "$known_example_path:231"|"$known_example_path:477"|"$known_example_path:478"|"$known_example_path:611")
+      baseline=$(git -C "$ROOT_DIR" show "HEAD:$path" 2>/dev/null | sed -n "${line_number}p") || return 1
+      [ "$line_text" = "$baseline" ]
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 for forbidden_pattern in \
   "/Users/"'rizalord' \
   "OPENAI_API_KEY"'=' \
   "ANTHROPIC_API_KEY"'=' \
   'gho''_' \
   'glpat''-' \
-  'BEGIN ''.* PRIVATE KEY'; do
-  if git -C "$ROOT_DIR" grep -nE -- "$forbidden_pattern" -- . ':(exclude)docs/**' ':(exclude)scripts/check.sh' >/dev/null 2>&1; then
+  "$private_key_pattern"; do
+  security_matches=$(git -C "$ROOT_DIR" grep -nE -- "$forbidden_pattern" -- . 2>/dev/null || true)
+  unexpected_matches=''
+  if [ -n "$security_matches" ]; then
+    while IFS= read -r security_match; do
+      [ -n "$security_match" ] || continue
+      if security_match_is_known_example "$security_match"; then
+        continue
+      fi
+      unexpected_matches="${unexpected_matches}${security_match}"$'\n'
+    done <<<"$security_matches"
+  fi
+  if [ -n "$unexpected_matches" ]; then
     fail "forbidden tracked content matches: $forbidden_pattern"
   else
     pass "security pattern absent: $forbidden_pattern"
@@ -131,15 +186,16 @@ check_optional_command 'docker compose' docker compose version
 
 if [ "$CHECK_INSTALLED" = true ]; then
   XDG_CONFIG_HOME=${XDG_CONFIG_HOME:-"$HOME/.config"}
-  expected_include="$XDG_CONFIG_HOME/git/dotfiles.gitconfig"
+  if [ "$XDG_CONFIG_HOME" = "$HOME/.config" ]; then
+    expected_include='~/.config/git/dotfiles.gitconfig'
+  else
+    expected_include="$XDG_CONFIG_HOME/git/dotfiles.gitconfig"
+  fi
 
-  for link_path in "$HOME/.zshrc" "$HOME/.zprofile" "$XDG_CONFIG_HOME/git/dotfiles.gitconfig" "$XDG_CONFIG_HOME/git/ignore"; do
-    if [ -L "$link_path" ]; then
-      pass "managed link present: $link_path"
-    else
-      fail "managed link missing: $link_path"
-    fi
-  done
+  check_managed_link "$HOME/.zshrc" "$ROOT_DIR/zsh/.zshrc"
+  check_managed_link "$HOME/.zprofile" "$ROOT_DIR/zsh/.zprofile"
+  check_managed_link "$XDG_CONFIG_HOME/git/dotfiles.gitconfig" "$ROOT_DIR/git/.gitconfig"
+  check_managed_link "$XDG_CONFIG_HOME/git/ignore" "$ROOT_DIR/git/.gitignore_global"
 
   if git config --global --get-all include.path 2>/dev/null | grep -Fxq "$expected_include"; then
     pass "Git include present: $expected_include"
