@@ -17,6 +17,8 @@
 
 .codex/
 .claude/
+.docker/
+.colima/
 *.log
 log/
 logs/
@@ -26,3 +28,14 @@ cache/
 *.swp
 *.swo
 *.swn
+
+docker-compose.override.yml
+docker-compose.override.yaml
+compose.override.yml
+compose.override.yaml
+docker-compose.local.yml
+docker-compose.local.yaml
+compose.local.yml
+compose.local.yaml
+docker-compose.state
+compose.state
