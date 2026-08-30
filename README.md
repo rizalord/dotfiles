@@ -15,6 +15,15 @@ cd "$HOME/src/dotfiles"
 ./install.sh --dry-run
 ./install.sh
 ./scripts/install-tools.sh
+```
+
+After the tool installer returns, open a new zsh login shell before
+continuing (for example, run `exec zsh -l`), or refresh the relevant PATH
+entries manually. The installer runs as a child process, so exports it makes
+cannot update the parent shell's PATH; a new login shell rereads the zsh
+configuration and sees the installed tools. In the new shell, run:
+
+```sh
 ./scripts/check.sh --installed --strict-tools
 ```
 
