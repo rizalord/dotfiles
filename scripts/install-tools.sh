@@ -34,6 +34,148 @@ require_command() {
   return 1
 }
 
+read_file_mode() {
+  local file_path="$1"
+  local file_mode
+
+  file_mode=$(stat -f '%Lp' "$file_path" 2>/dev/null || true)
+  case "$file_mode" in
+    ''|*[!0-7]*) file_mode=$(stat -c '%a' "$file_path" 2>/dev/null || true) ;;
+  esac
+  case "$file_mode" in
+    ''|*[!0-7]*) return 1 ;;
+    *) printf '%s\n' "$file_mode" ;;
+  esac
+}
+
+configure_docker_cli_plugins() {
+  local os_name
+  local brew_prefix
+  local plugin_dir
+  local docker_config_dir
+  local config_path
+  local jq_command
+  local temp_config
+  local config_mode
+
+  os_name=$(uname -s)
+  if [ "$os_name" != Darwin ]; then
+    log 'Docker CLI plugin config skipped: macOS only.'
+    return 0
+  fi
+
+  docker_config_dir=${DOCKER_CONFIG:-"$HOME/.docker"}
+  config_path="$docker_config_dir/config.json"
+
+  if [ "$DRY_RUN" = true ]; then
+    plugin_dir='$(brew --prefix)/lib/docker/cli-plugins'
+    log "dry-run: would configure Docker CLI plugins in $config_path using $plugin_dir"
+    return 0
+  fi
+
+  if ! command -v brew >/dev/null 2>&1; then
+    if [ "$SKIP_BREW" = true ]; then
+      log 'Docker CLI plugin config skipped: Homebrew unavailable with --skip-brew.'
+      return 0
+    fi
+    printf 'missing prerequisite: Homebrew is required to discover Docker CLI plugins. Install Homebrew, then rerun this script.\n' >&2
+    return 1
+  fi
+
+  if ! brew_prefix=$(brew --prefix 2>/dev/null) || [ -z "$brew_prefix" ]; then
+    printf 'missing prerequisite: unable to determine the Homebrew prefix with "brew --prefix". Fix Homebrew, then rerun this script.\n' >&2
+    return 1
+  fi
+
+  plugin_dir="$brew_prefix/lib/docker/cli-plugins"
+  if [ ! -d "$plugin_dir" ]; then
+    printf 'missing prerequisite: Docker CLI plugin directory %s. Run brew bundle and ensure docker-buildx/docker-compose are installed, then rerun this script.\n' "$plugin_dir" >&2
+    return 1
+  fi
+
+  if jq_command=$(command -v jq 2>/dev/null); then
+    :
+  elif [ -x "$brew_prefix/bin/jq" ]; then
+    jq_command="$brew_prefix/bin/jq"
+  else
+    printf 'missing prerequisite: jq is required to update Docker config.json safely. Run brew bundle or make jq available in PATH, then rerun this script.\n' >&2
+    return 1
+  fi
+
+  if [ -e "$config_path" ] && [ ! -f "$config_path" ]; then
+    printf 'invalid Docker config: %s is not a regular file. Move it aside or choose another DOCKER_CONFIG, then rerun this script.\n' "$config_path" >&2
+    return 1
+  fi
+  if [ -L "$config_path" ]; then
+    printf 'invalid Docker config: %s is a symlink. Refusing to replace it; move it aside or choose another DOCKER_CONFIG, then rerun this script.\n' "$config_path" >&2
+    return 1
+  fi
+
+  if [ -f "$config_path" ]; then
+    if ! "$jq_command" -e 'type == "object" and ((.cliPluginsExtraDirs? == null) or (((.cliPluginsExtraDirs | type) == "array") and all(.cliPluginsExtraDirs[]; type == "string")))' "$config_path" >/dev/null 2>&1; then
+      printf 'invalid Docker config: %s is not valid JSON or has an invalid cliPluginsExtraDirs array. Fix it or choose another DOCKER_CONFIG, then rerun this script.\n' "$config_path" >&2
+      return 1
+    fi
+    if "$jq_command" -e --arg plugin "$plugin_dir" '(.cliPluginsExtraDirs // []) | index($plugin) != null' "$config_path" >/dev/null 2>&1; then
+      log "Docker CLI plugin directory already configured: $plugin_dir"
+      return 0
+    fi
+  fi
+
+  if ! mkdir -p "$docker_config_dir"; then
+    printf 'unable to create Docker config directory: %s. Check the path and permissions, then rerun this script.\n' "$docker_config_dir" >&2
+    return 1
+  fi
+
+  if ! temp_config=$(mktemp "$docker_config_dir/.config.json.tmp.XXXXXX"); then
+    printf 'unable to create a temporary Docker config in: %s. Check the path and permissions, then rerun this script.\n' "$docker_config_dir" >&2
+    return 1
+  fi
+
+  if [ -f "$config_path" ]; then
+    if ! "$jq_command" --arg plugin "$plugin_dir" '.cliPluginsExtraDirs = ((.cliPluginsExtraDirs // []) + [$plugin] | unique)' "$config_path" > "$temp_config"; then
+      rm -f "$temp_config"
+      printf 'unable to update Docker config safely: %s. Fix the JSON or choose another DOCKER_CONFIG, then rerun this script.\n' "$config_path" >&2
+      return 1
+    fi
+    if ! config_mode=$(read_file_mode "$config_path") || ! chmod "$config_mode" "$temp_config"; then
+      rm -f "$temp_config"
+      printf 'unable to preserve Docker config permissions: %s. Check the file, then rerun this script.\n' "$config_path" >&2
+      return 1
+    fi
+  else
+    if ! "$jq_command" -n --arg plugin "$plugin_dir" '{cliPluginsExtraDirs: [$plugin]}' > "$temp_config"; then
+      rm -f "$temp_config"
+      printf 'unable to create Docker config safely: %s. Check the path and permissions, then rerun this script.\n' "$config_path" >&2
+      return 1
+    fi
+  fi
+
+  if ! mv -f "$temp_config" "$config_path"; then
+    rm -f "$temp_config"
+    printf 'unable to install Docker config: %s. Check the path and permissions, then rerun this script.\n' "$config_path" >&2
+    return 1
+  fi
+  log "Docker CLI plugin directory configured: $plugin_dir"
+}
+
+verify_docker_cli_plugins() {
+  if [ "$DRY_RUN" = true ]; then
+    log 'dry-run: would verify Docker Buildx: docker buildx version'
+    log 'dry-run: would verify Docker Compose: docker compose version'
+    return 0
+  fi
+
+  if ! docker buildx version >/dev/null 2>&1; then
+    printf 'missing prerequisite: Docker Buildx. Install the docker-buildx plugin and ensure Docker can find it, then rerun this script.\n' >&2
+    return 1
+  fi
+  if ! docker compose version >/dev/null 2>&1; then
+    printf 'missing prerequisite: Docker Compose. Install the docker-compose plugin and ensure Docker can find it, then rerun this script.\n' >&2
+    return 1
+  fi
+}
+
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=true ;;
@@ -69,15 +211,10 @@ else
   for required_tool in mise colima docker gh glab; do
     log "dry-run: would verify prerequisite: $required_tool"
   done
-  log 'dry-run: would verify Docker Buildx: docker buildx version'
 fi
 
-if [ "$DRY_RUN" = false ]; then
-  if ! docker buildx version >/dev/null 2>&1; then
-    printf 'missing prerequisite: Docker Buildx. Install the docker-buildx plugin, then rerun this script.\n' >&2
-    exit 1
-  fi
-fi
+configure_docker_cli_plugins
+verify_docker_cli_plugins
 
 export NPM_CONFIG_PREFIX="$HOME/.local"
 export PATH="$NPM_CONFIG_PREFIX/bin:$PATH"

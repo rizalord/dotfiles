@@ -14,6 +14,11 @@ GH_MARKER='gho''_'
 GLAB_MARKER='glpat''-'
 PRIVATE_KEY_MARKER='BEGIN '
 PRIVATE_KEY_MARKER="${PRIVATE_KEY_MARKER}.* PRIVATE KEY"
+JQ_BIN=$(command -v jq || true)
+JQ_DIR=''
+if [ -n "$JQ_BIN" ]; then
+  JQ_DIR=$(dirname "$JQ_BIN")
+fi
 
 assert_contains() {
   local text="$1"
@@ -96,6 +101,7 @@ assert_not_contains "$SKIP_OUTPUT" 'npm install --global @openai/codex'
 assert_not_contains "$SKIP_OUTPUT" 'npm install --global @anthropic-ai/claude-code'
 SKIP_OUTPUT=$(HOME="$SKIP_HOME" PATH="$SKIP_BIN:/usr/bin:/bin" \
   bash "$INSTALLER" --skip-brew 2>&1)
+assert_contains "$SKIP_OUTPUT" 'Docker CLI plugin config skipped: Homebrew unavailable with --skip-brew.'
 assert_contains "$SKIP_OUTPUT" 'codex already available; npm package installation is skipped.'
 assert_contains "$SKIP_OUTPUT" 'claude already available; npm package installation is skipped.'
 
@@ -132,12 +138,24 @@ for platform in Darwin Linux; do
   PLATFORM_LOG="$TMP_ROOT/${PLATFORM_PREFIX}-brew.log"
   mkdir -p "$PLATFORM_HOME" "$PLATFORM_BIN"
   write_fake "$PLATFORM_BIN" uname "printf '%s\\n' '$platform'"
-  write_fake "$PLATFORM_BIN" brew 'printf "brew %s\n" "$*" >> "$PLATFORM_LOG"'
+  if [ "$platform" = Darwin ] && [ -z "$JQ_BIN" ]; then
+    printf 'tool scripts: SKIP macOS Docker config tests because jq is unavailable\n'
+    continue
+  fi
+  if [ "$platform" = Darwin ]; then
+    PLATFORM_BREW_PREFIX="$TMP_ROOT/darwin-homebrew"
+    mkdir -p "$PLATFORM_BREW_PREFIX/lib/docker/cli-plugins"
+    write_fake "$PLATFORM_BIN" brew 'if [ "${1:-}" = --prefix ]; then printf "%s\n" "$PLATFORM_BREW_PREFIX"; else printf "brew %s\n" "$*" >> "$PLATFORM_LOG"; fi'
+  else
+    PLATFORM_BREW_PREFIX=''
+    write_fake "$PLATFORM_BIN" brew 'printf "brew %s\n" "$*" >> "$PLATFORM_LOG"'
+  fi
   for command_name in mise colima docker gh glab codex claude; do
     write_fake "$PLATFORM_BIN" "$command_name" 'exit 0'
   done
   PLATFORM_OUTPUT=$(HOME="$PLATFORM_HOME" PLATFORM_LOG="$PLATFORM_LOG" \
-    PATH="$PLATFORM_BIN:/usr/bin:/bin" bash "$INSTALLER" 2>&1)
+    PLATFORM_BREW_PREFIX="$PLATFORM_BREW_PREFIX" \
+    PATH="$PLATFORM_BIN${JQ_DIR:+:$JQ_DIR}:/usr/bin:/bin" bash "$INSTALLER" 2>&1)
   if [ "$platform" = Darwin ]; then
     assert_contains "$(<"$PLATFORM_LOG")" "brew bundle --file=$ROOT_DIR/Brewfile"
   else
@@ -145,6 +163,166 @@ for platform in Darwin Linux; do
     test ! -e "$PLATFORM_LOG"
   fi
 done
+
+# The macOS Docker CLI plugin helper must be isolated from the user's Homebrew,
+# HOME, and Docker config. It discovers the prefix, writes valid JSON safely,
+# preserves credentials, and remains idempotent across normal and --skip-brew
+# reruns.
+if [ -n "$JQ_BIN" ]; then
+  MAC_HELPER_HOME="$TMP_ROOT/mac-helper-home"
+  MAC_HELPER_BIN="$TMP_ROOT/mac-helper-bin"
+  MAC_HELPER_PREFIX="$TMP_ROOT/mac-helper-homebrew"
+  MAC_HELPER_LOG="$TMP_ROOT/mac-helper-brew.log"
+  mkdir -p "$MAC_HELPER_HOME" "$MAC_HELPER_BIN" \
+    "$MAC_HELPER_PREFIX/lib/docker/cli-plugins"
+  write_fake "$MAC_HELPER_BIN" uname 'printf "Darwin\n"'
+  write_fake "$MAC_HELPER_BIN" brew 'if [ "${1:-}" = --prefix ]; then printf "brew --prefix\n" >> "$BREW_LOG"; printf "%s\n" "$BREW_PREFIX"; else printf "brew %s\n" "$*" >> "$BREW_LOG"; fi'
+  write_fake "$MAC_HELPER_BIN" docker 'if [ "${1:-}" = buildx ] && [ "${2:-}" = version ]; then printf "github.com/docker/buildx v0.0.0\n"; elif [ "${1:-}" = compose ] && [ "${2:-}" = version ]; then printf "Docker Compose version v0.0.0\n"; else exit 1; fi'
+  for command_name in mise colima gh glab codex claude; do
+    write_fake "$MAC_HELPER_BIN" "$command_name" 'exit 0'
+  done
+
+  run_mac_helper_install() {
+    local config_dir="$1"
+    shift
+    HOME="$MAC_HELPER_HOME" DOCKER_CONFIG="$config_dir" \
+      BREW_PREFIX="$MAC_HELPER_PREFIX" BREW_LOG="$MAC_HELPER_LOG" \
+      PATH="$MAC_HELPER_BIN:$JQ_DIR:/usr/bin:/bin" \
+      bash "$INSTALLER" "$@"
+  }
+
+  run_mac_helper_install_default() {
+    local home_dir="$1"
+    shift
+    env -u DOCKER_CONFIG HOME="$home_dir" \
+      BREW_PREFIX="$MAC_HELPER_PREFIX" BREW_LOG="$MAC_HELPER_LOG" \
+      PATH="$MAC_HELPER_BIN:$JQ_DIR:/usr/bin:/bin" \
+      bash "$INSTALLER" "$@"
+  }
+
+  # A dry run reports the planned config action, but does not invoke brew,
+  # create its parent directory, or write config.json.
+  MAC_DRY_CONFIG="$TMP_ROOT/mac-dry-docker"
+  MAC_DRY_BREW_LOG="$TMP_ROOT/mac-dry-brew.log"
+  MAC_DRY_OUTPUT=$(HOME="$MAC_HELPER_HOME" DOCKER_CONFIG="$MAC_DRY_CONFIG" \
+    BREW_PREFIX="$MAC_HELPER_PREFIX" BREW_LOG="$MAC_DRY_BREW_LOG" \
+    PATH="$MAC_HELPER_BIN:$JQ_DIR:/usr/bin:/bin" \
+    bash "$INSTALLER" --dry-run --skip-brew 2>&1)
+  assert_contains "$MAC_DRY_OUTPUT" 'would configure Docker CLI plugins'
+  assert_contains "$MAC_DRY_OUTPUT" "$MAC_DRY_CONFIG/config.json"
+  assert_contains "$MAC_DRY_OUTPUT" '$(brew --prefix)/lib/docker/cli-plugins'
+  assert_contains "$MAC_DRY_OUTPUT" 'docker buildx version'
+  assert_contains "$MAC_DRY_OUTPUT" 'docker compose version'
+  test ! -e "$MAC_DRY_CONFIG"
+  test ! -e "$MAC_DRY_BREW_LOG"
+
+  MAC_DRY_EXISTING_CONFIG="$TMP_ROOT/mac-dry-existing-docker"
+  MAC_DRY_EXISTING_BREW_LOG="$TMP_ROOT/mac-dry-existing-brew.log"
+  mkdir -p "$MAC_DRY_EXISTING_CONFIG"
+  printf '%s\n' '{"auths":{"registry.example":{"auth":"leave-me"}}}' > "$MAC_DRY_EXISTING_CONFIG/config.json"
+  MAC_DRY_EXISTING_BEFORE=$(cksum "$MAC_DRY_EXISTING_CONFIG/config.json")
+  HOME="$MAC_HELPER_HOME" DOCKER_CONFIG="$MAC_DRY_EXISTING_CONFIG" \
+    BREW_PREFIX="$MAC_HELPER_PREFIX" BREW_LOG="$MAC_DRY_EXISTING_BREW_LOG" \
+    PATH="$MAC_HELPER_BIN:$JQ_DIR:/usr/bin:/bin" \
+    bash "$INSTALLER" --dry-run --skip-brew >/dev/null
+  MAC_DRY_EXISTING_AFTER=$(cksum "$MAC_DRY_EXISTING_CONFIG/config.json")
+  test "$MAC_DRY_EXISTING_BEFORE" = "$MAC_DRY_EXISTING_AFTER"
+  test ! -e "$MAC_DRY_EXISTING_BREW_LOG"
+
+  # A fresh config is created with the exact discovered plugin directory.
+  MAC_FRESH_CONFIG="$TMP_ROOT/mac-fresh-docker"
+  run_mac_helper_install "$MAC_FRESH_CONFIG" >/dev/null
+  test -f "$MAC_FRESH_CONFIG/config.json"
+  "$JQ_BIN" -e --arg plugin "$MAC_HELPER_PREFIX/lib/docker/cli-plugins" \
+    '.cliPluginsExtraDirs == [$plugin]' "$MAC_FRESH_CONFIG/config.json" >/dev/null
+
+  # With DOCKER_CONFIG unset, the helper uses $HOME/.docker/config.json.
+  MAC_DEFAULT_HOME="$TMP_ROOT/mac-default-home"
+  run_mac_helper_install_default "$MAC_DEFAULT_HOME" --skip-brew >/dev/null
+  test -f "$MAC_DEFAULT_HOME/.docker/config.json"
+  "$JQ_BIN" -e --arg plugin "$MAC_HELPER_PREFIX/lib/docker/cli-plugins" \
+    '.cliPluginsExtraDirs == [$plugin]' "$MAC_DEFAULT_HOME/.docker/config.json" >/dev/null
+
+  # Existing credentials and unrelated fields survive the update.
+  MAC_EXISTING_CONFIG="$TMP_ROOT/mac-existing-docker"
+  mkdir -p "$MAC_EXISTING_CONFIG"
+  printf '%s\n' '{"auths":{"registry.example":{"auth":"keep-me"}},"currentContext":"colima","cliPluginsExtraDirs":["/existing/plugins"]}' \
+    > "$MAC_EXISTING_CONFIG/config.json"
+  run_mac_helper_install "$MAC_EXISTING_CONFIG" --skip-brew >/dev/null
+  "$JQ_BIN" -e --arg plugin "$MAC_HELPER_PREFIX/lib/docker/cli-plugins" \
+    '(.auths["registry.example"].auth == "keep-me") and (.currentContext == "colima") and (.cliPluginsExtraDirs | index("/existing/plugins") != null) and (.cliPluginsExtraDirs | index($plugin) != null)' \
+    "$MAC_EXISTING_CONFIG/config.json" >/dev/null
+
+  # Re-running with --skip-brew keeps the exact JSON stable and does not
+  # duplicate the plugin directory.
+  MAC_CONFIG_BEFORE=$(cksum "$MAC_EXISTING_CONFIG/config.json")
+  run_mac_helper_install "$MAC_EXISTING_CONFIG" --skip-brew >/dev/null
+  MAC_CONFIG_AFTER=$(cksum "$MAC_EXISTING_CONFIG/config.json")
+  test "$MAC_CONFIG_BEFORE" = "$MAC_CONFIG_AFTER"
+  test "$("$JQ_BIN" --arg plugin "$MAC_HELPER_PREFIX/lib/docker/cli-plugins" '.cliPluginsExtraDirs | map(select(. == $plugin)) | length' "$MAC_EXISTING_CONFIG/config.json")" = 1
+
+  # DOCKER_CONFIG is honored literally and does not fall back to ~/.docker.
+  MAC_CUSTOM_CONFIG="$TMP_ROOT/mac-custom-docker"
+  run_mac_helper_install "$MAC_CUSTOM_CONFIG" --skip-brew >/dev/null
+  test -f "$MAC_CUSTOM_CONFIG/config.json"
+  test ! -e "$MAC_HELPER_HOME/.docker/config.json"
+
+  # Missing Homebrew, jq, plugin directory, and valid JSON all fail with an
+  # actionable error before the Docker config is mutated.
+  MAC_MISSING_BREW_BIN="$TMP_ROOT/mac-missing-brew-bin"
+  mkdir -p "$MAC_MISSING_BREW_BIN"
+  write_fake "$MAC_MISSING_BREW_BIN" uname 'printf "Darwin\n"'
+  for command_name in mise colima docker gh glab codex claude; do
+    write_fake "$MAC_MISSING_BREW_BIN" "$command_name" 'exit 0'
+  done
+  MAC_MISSING_BREW_OUTPUT="$TMP_ROOT/mac-missing-brew-output"
+  expect_failure "$MAC_MISSING_BREW_OUTPUT" env HOME="$MAC_HELPER_HOME" \
+    DOCKER_CONFIG="$TMP_ROOT/mac-missing-brew-docker" \
+    PATH="$MAC_MISSING_BREW_BIN:/usr/bin:/bin" \
+    bash "$INSTALLER"
+  assert_contains "$(<"$MAC_MISSING_BREW_OUTPUT")" 'missing prerequisite: Homebrew'
+  test ! -e "$TMP_ROOT/mac-missing-brew-docker"
+
+  MAC_MISSING_JQ_BIN="$TMP_ROOT/mac-missing-jq-bin"
+  mkdir -p "$MAC_MISSING_JQ_BIN"
+  ln -s "$(command -v bash)" "$MAC_MISSING_JQ_BIN/bash"
+  ln -s "$(command -v dirname)" "$MAC_MISSING_JQ_BIN/dirname"
+  write_fake "$MAC_MISSING_JQ_BIN" uname 'printf "Darwin\n"'
+  write_fake "$MAC_MISSING_JQ_BIN" brew 'if [ "${1:-}" = --prefix ]; then printf "%s\n" "$BREW_PREFIX"; fi'
+  write_fake "$MAC_MISSING_JQ_BIN" docker 'if [ "${1:-}" = buildx ] && [ "${2:-}" = version ]; then exit 0; elif [ "${1:-}" = compose ] && [ "${2:-}" = version ]; then exit 0; else exit 1; fi'
+  for command_name in mise colima gh glab codex claude; do
+    write_fake "$MAC_MISSING_JQ_BIN" "$command_name" 'exit 0'
+  done
+  MAC_MISSING_JQ_OUTPUT="$TMP_ROOT/mac-missing-jq-output"
+  expect_failure "$MAC_MISSING_JQ_OUTPUT" env HOME="$MAC_HELPER_HOME" \
+    DOCKER_CONFIG="$TMP_ROOT/mac-missing-jq-docker" BREW_PREFIX="$MAC_HELPER_PREFIX" \
+    PATH="$MAC_MISSING_JQ_BIN" bash "$INSTALLER" --skip-brew
+  assert_contains "$(<"$MAC_MISSING_JQ_OUTPUT")" 'missing prerequisite: jq'
+  test ! -e "$TMP_ROOT/mac-missing-jq-docker"
+
+  MAC_MISSING_PLUGIN_PREFIX="$TMP_ROOT/mac-missing-plugin-homebrew"
+  mkdir -p "$MAC_MISSING_PLUGIN_PREFIX"
+  MAC_MISSING_PLUGIN_OUTPUT="$TMP_ROOT/mac-missing-plugin-output"
+  expect_failure "$MAC_MISSING_PLUGIN_OUTPUT" env HOME="$MAC_HELPER_HOME" \
+    DOCKER_CONFIG="$TMP_ROOT/mac-missing-plugin-docker" \
+    BREW_PREFIX="$MAC_MISSING_PLUGIN_PREFIX" BREW_LOG="$MAC_HELPER_LOG" \
+    PATH="$MAC_HELPER_BIN:$JQ_DIR:/usr/bin:/bin" bash "$INSTALLER" --skip-brew
+  assert_contains "$(<"$MAC_MISSING_PLUGIN_OUTPUT")" 'Docker CLI plugin directory'
+  test ! -e "$TMP_ROOT/mac-missing-plugin-docker"
+
+  MAC_INVALID_CONFIG="$TMP_ROOT/mac-invalid-docker"
+  mkdir -p "$MAC_INVALID_CONFIG"
+  printf '%s\n' '{not valid json' > "$MAC_INVALID_CONFIG/config.json"
+  MAC_INVALID_BEFORE=$(cksum "$MAC_INVALID_CONFIG/config.json")
+  MAC_INVALID_OUTPUT="$TMP_ROOT/mac-invalid-output"
+  expect_failure "$MAC_INVALID_OUTPUT" env HOME="$MAC_HELPER_HOME" \
+    DOCKER_CONFIG="$MAC_INVALID_CONFIG" BREW_PREFIX="$MAC_HELPER_PREFIX" \
+    BREW_LOG="$MAC_HELPER_LOG" PATH="$MAC_HELPER_BIN:$JQ_DIR:/usr/bin:/bin" \
+    bash "$INSTALLER" --skip-brew
+  assert_contains "$(<"$MAC_INVALID_OUTPUT")" 'invalid Docker config'
+  MAC_INVALID_AFTER=$(cksum "$MAC_INVALID_CONFIG/config.json")
+  test "$MAC_INVALID_BEFORE" = "$MAC_INVALID_AFTER"
+fi
 
 # Default and custom XDG installs must both validate the installer's exact
 # include spelling and every managed symlink target.
@@ -257,6 +435,49 @@ expect_failure "$DOCKER_STRICT_OUTPUT" env HOME="$DOCKER_MISSING_HOME" \
   GIT_CONFIG_GLOBAL="$DOCKER_MISSING_GLOBAL" PATH="$DOCKER_MISSING_BIN:/usr/bin:/bin" \
   bash "$CHECKER" --strict-tools
 assert_contains "$(<"$DOCKER_STRICT_OUTPUT")" 'check: FAIL: tool missing: docker buildx'
+
+# The installer verifies both Docker CLI plugins and fails when Buildx is
+# missing, while dry-run only reports both planned checks.
+DOCKER_INSTALL_HOME="$TMP_ROOT/docker-install-home"
+DOCKER_INSTALL_BIN="$TMP_ROOT/docker-install-bin"
+DOCKER_INSTALL_LOG="$TMP_ROOT/docker-install.log"
+mkdir -p "$DOCKER_INSTALL_HOME" "$DOCKER_INSTALL_BIN"
+write_fake "$DOCKER_INSTALL_BIN" uname 'printf "Linux\n"'
+for command_name in mise colima gh glab codex claude; do
+  write_fake "$DOCKER_INSTALL_BIN" "$command_name" 'exit 0'
+done
+write_fake "$DOCKER_INSTALL_BIN" docker 'printf "%s\n" "$*" >> "$DOCKER_INSTALL_LOG"; if [ "${1:-}" = buildx ] && [ "${2:-}" = version ]; then printf "buildx ok\n"; elif [ "${1:-}" = compose ] && [ "${2:-}" = version ]; then printf "compose ok\n"; else exit 1; fi'
+DOCKER_INSTALL_OUTPUT=$(HOME="$DOCKER_INSTALL_HOME" DOCKER_INSTALL_LOG="$DOCKER_INSTALL_LOG" \
+  PATH="$DOCKER_INSTALL_BIN:/usr/bin:/bin" bash "$INSTALLER" --skip-brew 2>&1)
+assert_contains "$DOCKER_INSTALL_OUTPUT" 'NPM_CONFIG_PREFIX='
+assert_contains "$(<"$DOCKER_INSTALL_LOG")" 'buildx version'
+assert_contains "$(<"$DOCKER_INSTALL_LOG")" 'compose version'
+
+DOCKER_BUILDx_MISSING_BIN="$TMP_ROOT/docker-buildx-missing-bin"
+DOCKER_BUILDx_MISSING_HOME="$TMP_ROOT/docker-buildx-missing-home"
+mkdir -p "$DOCKER_BUILDx_MISSING_BIN" "$DOCKER_BUILDx_MISSING_HOME"
+write_fake "$DOCKER_BUILDx_MISSING_BIN" uname 'printf "Linux\n"'
+for command_name in mise colima gh glab codex claude; do
+  write_fake "$DOCKER_BUILDx_MISSING_BIN" "$command_name" 'exit 0'
+done
+write_fake "$DOCKER_BUILDx_MISSING_BIN" docker 'if [ "${1:-}" = compose ] && [ "${2:-}" = version ]; then printf "compose ok\n"; else exit 1; fi'
+DOCKER_BUILDx_MISSING_OUTPUT="$TMP_ROOT/docker-buildx-missing-output"
+expect_failure "$DOCKER_BUILDx_MISSING_OUTPUT" env HOME="$DOCKER_BUILDx_MISSING_HOME" \
+  PATH="$DOCKER_BUILDx_MISSING_BIN:/usr/bin:/bin" bash "$INSTALLER" --skip-brew
+assert_contains "$(<"$DOCKER_BUILDx_MISSING_OUTPUT")" 'missing prerequisite: Docker Buildx'
+
+DOCKER_COMPOSE_MISSING_BIN="$TMP_ROOT/docker-compose-missing-bin"
+DOCKER_COMPOSE_MISSING_HOME="$TMP_ROOT/docker-compose-missing-home"
+mkdir -p "$DOCKER_COMPOSE_MISSING_BIN" "$DOCKER_COMPOSE_MISSING_HOME"
+write_fake "$DOCKER_COMPOSE_MISSING_BIN" uname 'printf "Linux\n"'
+for command_name in mise colima gh glab codex claude; do
+  write_fake "$DOCKER_COMPOSE_MISSING_BIN" "$command_name" 'exit 0'
+done
+write_fake "$DOCKER_COMPOSE_MISSING_BIN" docker 'if [ "${1:-}" = buildx ] && [ "${2:-}" = version ]; then printf "buildx ok\n"; else exit 1; fi'
+DOCKER_COMPOSE_MISSING_OUTPUT="$TMP_ROOT/docker-compose-missing-output"
+expect_failure "$DOCKER_COMPOSE_MISSING_OUTPUT" env HOME="$DOCKER_COMPOSE_MISSING_HOME" \
+  PATH="$DOCKER_COMPOSE_MISSING_BIN:/usr/bin:/bin" bash "$INSTALLER" --skip-brew
+assert_contains "$(<"$DOCKER_COMPOSE_MISSING_OUTPUT")" 'missing prerequisite: Docker Compose'
 
 # The unchanged policy examples are allowed for every forbidden marker.
 BASE_CHECK_OUTPUT=$(HOME="$STRICT_HOME" GIT_CONFIG_GLOBAL="$STRICT_GLOBAL" \
