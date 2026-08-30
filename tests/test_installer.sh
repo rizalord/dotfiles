@@ -98,4 +98,40 @@ BACKUPS_AFTER=$(find "$BACKUP_ROOT" -type f | wc -l | tr -d " ")
 test "$BACKUPS_BEFORE" = "$BACKUPS_AFTER"
 test "$(git_effective --get init.defaultBranch)" = main
 
+# A relative symlink must remain recoverable after it is moved into the
+# timestamped backup directory. The backup target must be made absolute so it
+# does not become relative to the new backup location.
+SYMLINK_HOME="$TMP_HOME/symlink-home"
+SYMLINK_CONFIG="$TMP_HOME/symlink-config"
+SYMLINK_GLOBAL="$TMP_HOME/symlink-global"
+SYMLINK_TARGET="$SYMLINK_HOME/dotfiles/zsh/.zprofile"
+mkdir -p "$SYMLINK_HOME/dotfiles/zsh"
+SYMLINK_TARGET_PHYSICAL=$(CDPATH= cd -- "$(dirname "$SYMLINK_TARGET")" && \
+  printf '%s/%s\n' "$(pwd -P)" "$(basename "$SYMLINK_TARGET")")
+printf 'legacy symlink zprofile\n' > "$SYMLINK_TARGET"
+ln -s 'dotfiles/zsh/.zprofile' "$SYMLINK_HOME/.zprofile"
+
+run_symlink_installer() {
+  HOME="$SYMLINK_HOME" \
+  XDG_CONFIG_HOME="$SYMLINK_CONFIG" \
+  GIT_CONFIG_GLOBAL="$SYMLINK_GLOBAL" \
+  PATH="$FAKE_BIN:$PATH" \
+  bash "$ROOT_DIR/install.sh" "$@"
+}
+
+run_symlink_installer
+SYMLINK_BACKUP=$(find "$SYMLINK_HOME/.local/state/dotfiles-backups" -type l -name '.zprofile' -print -quit)
+test -n "$SYMLINK_BACKUP"
+test -L "$SYMLINK_BACKUP"
+SYMLINK_BACKUP_TARGET=$(readlink "$SYMLINK_BACKUP")
+case "$SYMLINK_BACKUP_TARGET" in
+  /*) ;;
+  *)
+    echo "relative symlink backup target: $SYMLINK_BACKUP_TARGET" >&2
+    exit 1
+    ;;
+esac
+test "$SYMLINK_BACKUP_TARGET" = "$SYMLINK_TARGET_PHYSICAL"
+test "$(<"$SYMLINK_BACKUP")" = 'legacy symlink zprofile'
+
 echo "installer: PASS"

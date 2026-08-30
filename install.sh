@@ -71,10 +71,32 @@ backup_existing() {
   local destination="$1"
   ensure_backup_directory
   local backup_path="$BACKUP_DIR/$(basename "$destination")"
+  local link_target
+  local resolved_link_target
+  local backup_temp
 
   if [ "$DRY_RUN" = true ]; then
     log "would back up $destination to $backup_path"
     return
+  fi
+
+  if [ -L "$destination" ]; then
+    link_target=$(readlink "$destination")
+    case "$link_target" in
+      /*) ;;
+      *)
+        if resolved_link_target=$(CDPATH= cd -- "$(dirname "$destination")" && \
+          CDPATH= cd -- "$(dirname "$link_target")" && \
+          printf '%s/%s\n' "$(pwd -P)" "$(basename "$link_target")"); then
+          backup_temp="$backup_path.tmp.$$"
+          ln -s "$resolved_link_target" "$backup_temp"
+          mv "$destination" "$backup_path"
+          mv -f "$backup_temp" "$backup_path"
+          log "backed up $destination to $backup_path"
+          return
+        fi
+        ;;
+    esac
   fi
 
   mv "$destination" "$backup_path"
