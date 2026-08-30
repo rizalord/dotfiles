@@ -4,7 +4,7 @@
 
 **Goal:** Mengubah repository minimal ini menjadi dotfiles macOS-first yang aman, portable, idempotent, terdokumentasi, dan dapat memasang serta memverifikasi tool developer termasuk GitHub CLI, GitLab CLI, Codex CLI, Claude Code CLI, dan VS Code CLI.
 
-**Architecture:** Gunakan shell script native dengan symlink terkelola dan backup bertimestamp; tidak memakai framework dotfiles tambahan. Konfigurasi bersama dipisahkan dari override lokal, sedangkan Git identity dan seluruh kredensial tetap di luar repository. Homebrew menangani tool macOS, dan npm dengan prefix $HOME/.local menangani AI CLI yang belum tersedia.
+**Architecture:** Gunakan shell script native dengan symlink terkelola dan backup bertimestamp; tidak memakai framework dotfiles tambahan. Konfigurasi bersama dipisahkan dari override lokal, sedangkan Git identity dan seluruh kredensial tetap di luar repository. Homebrew menangani tool macOS, dan mise menangani versi runtime Node untuk AI CLI.
 
 **Tech Stack:** zsh, POSIX-compatible shell, Bash test harness, Git config, Homebrew Bundle, npm, macOS arm64, guard ringan untuk Linux.
 
@@ -20,6 +20,7 @@
 - Tidak ada API key, token, hostname internal, atau path /Users/... yang ditulis di konfigurasi bersama.
 - Installer tidak menjalankan login GitHub/GitLab, tidak membuat SSH key, dan tidak menyalin credential store.
 - Codex CLI dan Claude Code CLI dipasang hanya jika belum ada; proses tidak pernah meminta atau menyimpan token.
+- Node.js dikelola oleh mise, bukan formula Node global Homebrew; Colima menjadi runtime container macOS.
 - Test berjalan tanpa network dan tanpa mengubah home directory pengguna.
 - Remote utama tetap origin (GitHub), sedangkan GitLab menjadi mirror eksplisit melalui git push gitlab main.
 - Perubahan lokal yang sudah ada pada zsh/.zprofile harus dipertahankan maknanya dan diubah dari absolute path menjadi $HOME/.local/bin.
@@ -29,7 +30,7 @@
 ## File map
 
 - Create .gitignore — mengecualikan secret, local override, cache, log, private key, dan artefak OS.
-- Create Brewfile — daftar formula Homebrew macOS untuk tool developer dan dependency Node.
+- Create Brewfile — daftar formula Homebrew macOS untuk tool developer, mise, dan Colima/Docker CLI.
 - Create git/.gitconfig — preference Git lintas mesin tanpa identity atau credential.
 - Create git/.gitignore_global — global ignore untuk artefak editor dan OS yang aman diabaikan.
 - Modify zsh/.zprofile — login environment yang portable dan guarded.
@@ -85,7 +86,9 @@ Buat tests/test_repository.sh dengan isi berikut:
     assert_contains "$ROOT_DIR/.gitignore" ".claude/"
     assert_contains "$ROOT_DIR/Brewfile" 'brew "gh"'
     assert_contains "$ROOT_DIR/Brewfile" 'brew "glab"'
-    assert_contains "$ROOT_DIR/Brewfile" 'brew "node"'
+    assert_contains "$ROOT_DIR/Brewfile" 'brew "mise"'
+    assert_contains "$ROOT_DIR/Brewfile" 'brew "colima"'
+    assert_contains "$ROOT_DIR/Brewfile" 'brew "docker"'
     assert_contains "$ROOT_DIR/git/.gitignore_global" ".DS_Store"
 
     echo "repository hygiene: PASS"
@@ -111,11 +114,15 @@ Brewfile harus berisi formula berikut:
     brew "glab"
     brew "git"
     brew "jq"
-    brew "node"
+    brew "mise"
     brew "ripgrep"
     brew "shellcheck"
     brew "starship"
     brew "zoxide"
+    brew "colima"
+    brew "docker"
+    brew "docker-buildx"
+    brew "docker-compose"
 
 git/.gitignore_global minimal berisi .DS_Store, .AppleDouble, .LSOverride,
 ._*, *.swp, *.swo, dan .idea/.
@@ -142,7 +149,7 @@ Expected: PASS dengan output repository hygiene: PASS.
 
 **Interfaces:**
 - Produces: .zprofile aman untuk login shell dan .zshrc aman untuk interactive shell.
-- Consumes: $HOME, XDG_CONFIG_HOME, dan command opsional brew, fzf, zoxide, starship.
+- Consumes: $HOME, XDG_CONFIG_HOME, dan command opsional brew, mise, fzf, zoxide, starship.
 
 - [ ] Step 1: Tulis failing test untuk syntax, guard, dan local override
 
@@ -159,6 +166,7 @@ Buat tests/test_zsh.sh:
     assert_contains "$ROOT_DIR/zsh/.zprofile" "brew shellenv"
     assert_contains "$ROOT_DIR/zsh/.zprofile" '$HOME/.local/bin'
     assert_contains "$ROOT_DIR/zsh/.zshrc" '[[ -o interactive ]] || return'
+    assert_contains "$ROOT_DIR/zsh/.zshrc" 'mise activate zsh'
     assert_contains "$ROOT_DIR/zsh/.zshrc" 'local.zsh'
 
     TMP_HOME=$(mktemp -d)
@@ -204,6 +212,10 @@ gco, gsw, dan glog, serta integrasi guarded:
 
     if (( $+commands[zoxide] )); then
       eval "$(zoxide init zsh)"
+    fi
+
+    if (( $+commands[mise] )); then
+      eval "$(mise activate zsh)"
     fi
 
     if (( $+commands[starship] )); then
@@ -408,8 +420,9 @@ tambahan.
 **Interfaces:**
 - scripts/install-tools.sh --dry-run --skip-brew — mencetak tindakan tanpa
   network atau perubahan.
-- scripts/install-tools.sh — menjalankan brew bundle pada macOS, lalu
-  memasang package npm AI yang belum ada dengan prefix $HOME/.local.
+- scripts/install-tools.sh — menjalankan brew bundle pada macOS, memastikan
+  Node LTS melalui mise, lalu memasang package npm AI yang belum ada dengan
+  prefix $HOME/.local.
 - scripts/check.sh — memeriksa repository; --installed menambah check
   symlink/Git include; --strict-tools mengubah tool opsional yang hilang
   menjadi failure.
@@ -446,15 +459,17 @@ Expected: FAIL karena script tool belum dibuat.
 
 Script harus resolve repository root, menerima --dry-run dan --skip-brew,
 menolak argumen tidak dikenal, menjalankan brew bundle --file=$ROOT_DIR/Brewfile
-pada macOS dengan brew, dan melewati command yang sudah ada gh, glab,
-codex, serta claude.
+pada macOS dengan brew, memastikan command mise, colima, docker, gh, dan glab,
+serta melewati command yang sudah ada codex dan claude.
 
-Jika codex belum ada, gunakan npm install --global @openai/codex. Jika
-claude belum ada, gunakan npm install --global @anthropic-ai/claude-code.
-Sebelum npm install, tetapkan NPM_CONFIG_PREFIX="$HOME/.local" dan pastikan
-$HOME/.local/bin ada di PATH proses. Jangan memakai sudo, menjalankan login,
-atau menulis credential. Beri pesan jelas jika npm atau brew belum tersedia.
-Dry-run hanya mencetak command.
+Jika codex belum ada, pastikan Node LTS melalui mise dengan
+mise use --global node@lts lalu gunakan npm install --global @openai/codex.
+Jika claude belum ada, gunakan npm install --global
+@anthropic-ai/claude-code. Sebelum npm install, tetapkan
+NPM_CONFIG_PREFIX="$HOME/.local" dan pastikan $HOME/.local/bin ada di PATH
+proses. Jangan memakai sudo, menjalankan login, atau menulis credential. Beri
+pesan jelas jika mise, npm, atau brew belum tersedia. Dry-run hanya mencetak
+command.
 
 - [ ] Step 4: Implementasikan check.sh
 
@@ -463,10 +478,10 @@ memeriksa manifest, dan mencari pola yang dilarang: /Users/rizalord,
 OPENAI_API_KEY=, ANTHROPIC_API_KEY=, gho_, glpat-, BEGIN .* PRIVATE KEY,
 serta file *.pem yang terlacak.
 
-Command git, zsh, dan file repository adalah required. brew, gh, glab,
-codex, claude, code, fzf, zoxide, dan starship dicetak sebagai
-available/missing; --strict-tools mengembalikan failure bila tool tersebut
-missing. --installed memeriksa link dan Git include pada $HOME.
+Command git, zsh, dan file repository adalah required. brew, mise, gh, glab,
+codex, claude, code, colima, docker, docker compose, fzf, zoxide, dan starship
+dicetak sebagai available/missing; --strict-tools mengembalikan failure bila
+tool tersebut missing. --installed memeriksa link dan Git include pada $HOME.
 
 - [ ] Step 5: Jalankan test untuk memastikan ia lulus
 
@@ -522,9 +537,14 @@ README harus memuat:
     ./install.sh
     ./scripts/install-tools.sh
     ./scripts/check.sh --installed --strict-tools
+    mise use --global node@lts
+    colima start
+    docker run --rm hello-world
+    docker compose version
 
 README juga menjelaskan default SSH key ~/.ssh/id_ed25519, login GitHub/GitLab
-CLI manual, login Codex/Claude Code manual setelah install, VS Code CLI melalui
+CLI manual, login Codex/Claude Code manual setelah install, `mise` sebagai
+runtime manager, Colima sebagai runtime container macOS, VS Code CLI melalui
 Command Palette, local override ~/.config/zsh/local.zsh, identity Git di
 global config lokal, lokasi backup, dan workflow:
 
@@ -570,13 +590,16 @@ terpasang sebagai symlink; file yang sudah ada hanya dipindah ke backup.
     ./scripts/install-tools.sh
     ./scripts/check.sh --installed --strict-tools
 
-Expected: git, gh, glab, codex, claude, dan code terdeteksi. Jika VS Code
-app atau network belum tersedia, proses memberi pesan actionable tanpa
-membuat credential otomatis.
+Expected: git, gh, glab, mise, codex, claude, colima, docker, docker compose,
+dan code terdeteksi. Jika VS Code app atau network belum tersedia, proses
+memberi pesan actionable tanpa membuat credential otomatis.
 
 - [ ] Step 4: Verifikasi workflow shell dan Git
 
-    zsh -lic 'command -v code; command -v codex; command -v claude; alias gs'
+    zsh -lic 'command -v code; command -v codex; command -v claude; command -v mise; command -v colima; command -v docker; alias gs'
+    colima start
+    docker run --rm hello-world
+    docker compose version
     git config --global --get-all include.path
     git status --short --branch
 

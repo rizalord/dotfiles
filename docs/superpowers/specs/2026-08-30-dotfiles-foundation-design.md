@@ -85,6 +85,7 @@ tidak menyalin credential store.
 - history yang aman dan nyaman;
 - completion bawaan zsh;
 - editor dan language/tool paths yang dapat dioverride;
+- aktivasi `mise` hanya jika command tersedia;
 - integrasi opsional untuk `fzf`, `zoxide`, dan `starship` hanya jika
   command tersedia;
 - alias Git dan command dasar yang tidak menimpa perilaku berisiko;
@@ -110,13 +111,35 @@ dipasang sebagai global excludes file untuk artefak umum seperti `.DS_Store`.
 ### Tooling
 
 `Brewfile` berisi tool CLI umum yang stabil untuk macOS, termasuk GitHub CLI,
-GitLab CLI, dan utilitas developer yang dipakai konfigurasi shell.
+GitLab CLI, `mise`, Colima, Docker CLI, Docker Compose, dan utilitas developer
+yang dipakai konfigurasi shell. Node.js tidak dipasang sebagai formula global;
+versinya dikelola oleh `mise`.
 
 `scripts/install-tools.sh` memeriksa tool dan hanya memasang yang belum ada.
-Codex CLI dan Claude Code CLI masuk sebagai tool opsional yang diverifikasi
-seperti tool lain. Mekanisme install mengikuti channel resmi masing-masing
-tool saat implementasi; script tidak pernah menulis token atau menjalankan
-proses login secara otomatis.
+Jika Node.js dibutuhkan untuk memasang Codex CLI atau Claude Code CLI, script
+menggunakan `mise use --global node@lts` lalu memasang package npm dengan
+prefix `$HOME/.local`; script tidak memakai `sudo`. Codex CLI dan Claude Code
+CLI masuk sebagai tool opsional yang diverifikasi seperti tool lain. Script
+tidak pernah menulis token atau menjalankan proses login secara otomatis.
+
+### Container pada macOS
+
+Colima menjadi runtime container default untuk macOS. `Brewfile` memasang
+`colima`, `docker`, `docker-compose`, dan `docker-buildx`; installer tidak
+otomatis menyalakan VM karena lifecycle runtime harus dipilih pengguna.
+
+Workflow pertama dijelaskan di README:
+
+```sh
+colima start
+docker run --rm hello-world
+docker compose version
+```
+
+Image, volume, context credential, dan state `~/.colima`/`~/.docker` tidak
+masuk repository. Provisioning Docker Engine dan Portainer untuk Linux tetap
+berada di profil terpisah karena membutuhkan package manager OS, systemd,
+firewall, dan permission root.
 
 ### Verifikasi
 
@@ -135,8 +158,8 @@ memberi status skip yang eksplisit, bukan false positive.
 ## Keamanan dan recovery
 
 `.gitignore` mengecualikan local override, `.env`, token, private key,
-credential file, cache, log, dan artefak OS. Contoh konfigurasi hanya boleh
-berisi placeholder.
+credential file, cache, log, artefak OS, Docker config lokal, serta state
+container. Contoh konfigurasi hanya boleh berisi placeholder.
 
 Semua penggantian file oleh installer dapat dipulihkan dari direktori backup.
 Installer tidak memakai operasi recursive delete dan tidak menimpa file
@@ -164,8 +187,8 @@ perubahan ke kedua remote.
 - `.zshrc` dan `.zprofile` lolos syntax check.
 - Tidak ada secret, absolute path pengguna, atau credential state yang
   terlacak Git.
-- `gh`, `glab`, `codex`, dan `claude` dapat diverifikasi tanpa memerlukan
-  login otomatis.
+- `gh`, `glab`, `mise`, `codex`, `claude`, `colima`, `docker`, dan
+  `docker compose` dapat diverifikasi tanpa memerlukan login otomatis.
 - Test berjalan pada mesin saat ini dan menjelaskan dependency yang tidak
   tersedia.
 - Perubahan tervalidasi sebelum commit dan dipush ke GitHub serta GitLab.
