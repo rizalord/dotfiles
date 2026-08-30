@@ -134,4 +134,29 @@ esac
 test "$SYMLINK_BACKUP_TARGET" = "$SYMLINK_TARGET_PHYSICAL"
 test "$(<"$SYMLINK_BACKUP")" = 'legacy symlink zprofile'
 
+# Even when the relative symlink target is already missing, preserve its
+# original absolute location instead of making it relative to the backup
+# directory.
+DANGLING_HOME="$TMP_HOME/dangling-home"
+DANGLING_CONFIG="$TMP_HOME/dangling-config"
+DANGLING_GLOBAL="$TMP_HOME/dangling-global"
+DANGLING_TARGET='missing-parent/dotfiles/.zprofile'
+mkdir -p "$DANGLING_HOME"
+ln -s "$DANGLING_TARGET" "$DANGLING_HOME/.zprofile"
+
+run_dangling_installer() {
+  HOME="$DANGLING_HOME" \
+  XDG_CONFIG_HOME="$DANGLING_CONFIG" \
+  GIT_CONFIG_GLOBAL="$DANGLING_GLOBAL" \
+  PATH="$FAKE_BIN:$PATH" \
+  bash "$ROOT_DIR/install.sh" "$@"
+}
+
+run_dangling_installer
+DANGLING_BACKUP=$(find "$DANGLING_HOME/.local/state/dotfiles-backups" -type l -name '.zprofile' -print -quit)
+test -n "$DANGLING_BACKUP"
+DANGLING_HOME_PHYSICAL=$(CDPATH= cd -- "$DANGLING_HOME" && pwd -P)
+test "$(readlink "$DANGLING_BACKUP")" = "$DANGLING_HOME_PHYSICAL/$DANGLING_TARGET"
+test ! -e "$DANGLING_BACKUP"
+
 echo "installer: PASS"

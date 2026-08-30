@@ -86,8 +86,7 @@ backup_existing() {
       /*) ;;
       *)
         if resolved_link_target=$(CDPATH= cd -- "$(dirname "$destination")" && \
-          CDPATH= cd -- "$(dirname "$link_target")" && \
-          printf '%s/%s\n' "$(pwd -P)" "$(basename "$link_target")"); then
+          printf '%s/%s\n' "$(pwd -P)" "$link_target"); then
           backup_temp="$backup_path.tmp.$$"
           ln -s "$resolved_link_target" "$backup_temp"
           mv "$destination" "$backup_path"
