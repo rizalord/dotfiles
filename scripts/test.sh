@@ -10,6 +10,8 @@ export HOME="$TEST_HOME"
 export XDG_CONFIG_HOME="$TEST_HOME/.config"
 export GIT_CONFIG_GLOBAL="$TEST_HOME/.gitconfig"
 
+cd -- "$ROOT_DIR"
+
 for test_file in "$ROOT_DIR"/tests/test_*.sh; do
   echo "==> $test_file"
   bash "$test_file"

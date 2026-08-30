@@ -54,7 +54,38 @@ distribution's package manager, systemd, firewall, and root permissions.
 
 The expected default SSH authentication key is `~/.ssh/id_ed25519`. The
 installer does not create keys, copy private keys, or copy credential stores.
-Create or register a key separately, then test the relevant SSH connection.
+Handle SSH authentication manually after installation. If the default key
+already exists, use it; generate one only when it is absent:
+
+```sh
+SSH_KEY="$HOME/.ssh/id_ed25519"
+if [ ! -f "$SSH_KEY" ]; then
+  umask 077
+  ssh-keygen -t ed25519 -f "$SSH_KEY" -C "you@example.com"
+fi
+if [ ! -f "$SSH_KEY.pub" ]; then
+  ssh-keygen -y -f "$SSH_KEY" > "$SSH_KEY.pub"
+fi
+```
+
+On macOS, add the key to the Apple keychain, copy the public key, and add it
+to the SSH keys page for each service:
+
+```sh
+eval "$(ssh-agent -s)"
+ssh-add --apple-use-keychain "$SSH_KEY"
+pbcopy < "$SSH_KEY.pub"
+```
+
+Paste the copied key into GitHub **Settings → SSH and GPG keys** and GitLab
+**Preferences/Settings → SSH Keys**, then test both connections:
+
+```sh
+ssh -T git@github.com
+ssh -T git@gitlab.com
+```
+
+The installer remains non-authenticated and never runs these commands.
 
 After the tools are installed, authenticate manually when needed:
 
@@ -89,21 +120,45 @@ The shared preferences are included through
 `~/.config/git/dotfiles.gitconfig`; they contain no identity, signing key, or
 credential helper.
 
+With a custom `XDG_CONFIG_HOME`, the installer puts its Git symlinks and
+include at `$XDG_CONFIG_HOME/git/dotfiles.gitconfig` and
+`$XDG_CONFIG_HOME/git/ignore`. The shared config's
+`core.excludesFile` intentionally remains `~/.config/git/ignore`, so custom
+XDG users must set the global excludes file explicitly after installation:
+
+```sh
+git config --global core.excludesFile "$XDG_CONFIG_HOME/git/ignore"
+```
+
 ## Recovery and verification
 
 When the installer replaces an existing file, it preserves the old item under
-`~/.local/state/dotfiles-backups/` in a timestamped directory. To recover a
-file, inspect the backup, remove the managed symlink, and move the desired
-backup back into place. For example:
+`~/.local/state/dotfiles-backups/` in a directory named
+`<YYYYMMDD-HHMMSS>-<pid>-<attempt>` (for example,
+`20260830-120000-24187-0`). To recover `.zshrc`, first inspect the backups.
+Before unlinking anything, verify that `.zshrc` is still the expected
+managed symlink to this checkout. Then move the desired backup back into
+place:
 
 ```sh
 find "$HOME/.local/state/dotfiles-backups" -name .zshrc -print
-rm "$HOME/.zshrc"
-mv "$HOME/.local/state/dotfiles-backups/<timestamp>/.zshrc" "$HOME/.zshrc"
+BACKUP_DIR="$HOME/.local/state/dotfiles-backups/<YYYYMMDD-HHMMSS>-<pid>-<attempt>"
+DOTFILES_ROOT="$HOME/src/dotfiles"  # adjust if this checkout is elsewhere
+if [ -L "$HOME/.zshrc" ] \
+  && [ "$(readlink "$HOME/.zshrc")" = "$DOTFILES_ROOT/zsh/.zshrc" ]; then
+  unlink "$HOME/.zshrc"
+else
+  printf 'refusing to unlink unexpected ~/.zshrc\n' >&2
+  exit 1
+fi
+test -f "$BACKUP_DIR/.zshrc"
+mv "$BACKUP_DIR/.zshrc" "$HOME/.zshrc"
 ```
 
-Do not delete a backup until the restored file has been checked. The
-installer does not automatically remove backup data.
+Replace the angle-bracket placeholders in `BACKUP_DIR` with the actual
+directory selected from `find`. Do not remove a backup until the restored
+file has been checked. The installer does not automatically remove backup
+data.
 
 Useful read-only and inspection commands are:
 
