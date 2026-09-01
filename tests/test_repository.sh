@@ -37,6 +37,12 @@ assert_contains "$ROOT_DIR/Brewfile" 'brew "glab"'
 assert_contains "$ROOT_DIR/Brewfile" 'brew "mise"'
 assert_contains "$ROOT_DIR/Brewfile" 'brew "colima"'
 assert_contains "$ROOT_DIR/Brewfile" 'brew "docker"'
+assert_contains "$ROOT_DIR/Brewfile" 'brew "eza"'
+assert_contains "$ROOT_DIR/Brewfile" 'brew "git-delta"'
+assert_contains "$ROOT_DIR/Brewfile" 'brew "zsh-syntax-highlighting"'
+assert_contains "$ROOT_DIR/Brewfile" 'cask "ghostty"'
+assert_file "$ROOT_DIR/starship/starship.toml"
+assert_file "$ROOT_DIR/ghostty/config"
 assert_contains "$ROOT_DIR/git/.gitignore_global" ".DS_Store"
 assert_ignored ".env"
 assert_ignored "credentials.pem"

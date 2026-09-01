@@ -387,6 +387,10 @@ assert_exact_links() {
   test "$(readlink "$config_dir/git/dotfiles.gitconfig")" = "$ROOT_DIR/git/.gitconfig"
   test -L "$config_dir/git/ignore"
   test "$(readlink "$config_dir/git/ignore")" = "$ROOT_DIR/git/.gitignore_global"
+  test -L "$config_dir/starship.toml"
+  test "$(readlink "$config_dir/starship.toml")" = "$ROOT_DIR/starship/starship.toml"
+  test -L "$config_dir/ghostty/config"
+  test "$(readlink "$config_dir/ghostty/config")" = "$ROOT_DIR/ghostty/config"
 }
 
 DEFAULT_HOME="$TMP_ROOT/default-home"

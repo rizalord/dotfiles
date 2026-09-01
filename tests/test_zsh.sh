@@ -12,6 +12,9 @@ assert_contains "$ROOT_DIR/zsh/.zshrc" '[[ -o interactive ]] || return'
 assert_contains "$ROOT_DIR/zsh/.zshrc" 'bindkey -e'
 assert_contains "$ROOT_DIR/zsh/.zshrc" 'mise activate zsh'
 assert_contains "$ROOT_DIR/zsh/.zshrc" 'local.zsh'
+assert_contains "$ROOT_DIR/zsh/.zshrc" 'compinit'
+assert_contains "$ROOT_DIR/zsh/.zshrc" 'zsh-syntax-highlighting'
+assert_contains "$ROOT_DIR/zsh/.zshrc" 'starship init zsh'
 
 TMP_HOME=$(mktemp -d)
 trap 'rm -rf -- "$TMP_HOME"' EXIT

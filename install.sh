@@ -165,4 +165,6 @@ link_managed_file "$ROOT_DIR/zsh/.zshrc" "$HOME/.zshrc"
 link_managed_file "$ROOT_DIR/zsh/.zprofile" "$HOME/.zprofile"
 link_managed_file "$ROOT_DIR/git/.gitconfig" "$XDG_CONFIG_HOME/git/dotfiles.gitconfig"
 link_managed_file "$ROOT_DIR/git/.gitignore_global" "$XDG_CONFIG_HOME/git/ignore"
+link_managed_file "$ROOT_DIR/starship/starship.toml" "$XDG_CONFIG_HOME/starship.toml"
+link_managed_file "$ROOT_DIR/ghostty/config" "$XDG_CONFIG_HOME/ghostty/config"
 ensure_git_include

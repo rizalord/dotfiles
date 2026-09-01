@@ -89,6 +89,8 @@ check_file "$ROOT_DIR/git/.gitconfig"
 check_file "$ROOT_DIR/git/.gitignore_global"
 check_file "$ROOT_DIR/zsh/.zprofile"
 check_file "$ROOT_DIR/zsh/.zshrc"
+check_file "$ROOT_DIR/starship/starship.toml"
+check_file "$ROOT_DIR/ghostty/config"
 
 for formula in gh glab mise colima docker docker-buildx docker-compose; do
   if grep -Fq -- "brew \"$formula\"" "$ROOT_DIR/Brewfile"; then
@@ -185,7 +187,7 @@ else
   pass 'no tracked PEM files'
 fi
 
-for tool in brew mise gh glab codex claude code colima docker fzf zoxide starship; do
+for tool in brew mise gh glab codex claude code colima docker fzf zoxide starship eza bat delta; do
   check_optional_command "$tool" command -v "$tool"
 done
 check_optional_command 'docker buildx' docker buildx version
@@ -203,6 +205,8 @@ if [ "$CHECK_INSTALLED" = true ]; then
   check_managed_link "$HOME/.zprofile" "$ROOT_DIR/zsh/.zprofile"
   check_managed_link "$XDG_CONFIG_HOME/git/dotfiles.gitconfig" "$ROOT_DIR/git/.gitconfig"
   check_managed_link "$XDG_CONFIG_HOME/git/ignore" "$ROOT_DIR/git/.gitignore_global"
+  check_managed_link "$XDG_CONFIG_HOME/starship.toml" "$ROOT_DIR/starship/starship.toml"
+  check_managed_link "$XDG_CONFIG_HOME/ghostty/config" "$ROOT_DIR/ghostty/config"
 
   if git config --global --get-all include.path 2>/dev/null | grep -Fxq "$expected_include"; then
     pass "Git include present: $expected_include"

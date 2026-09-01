@@ -37,6 +37,34 @@ does not log in to any service. It installs the optional Codex and Claude Code
 CLIs only when they are missing. Node is deliberately not installed as a
 global Homebrew formula.
 
+## Terminal and shell experience
+
+`./scripts/install-tools.sh` runs `brew bundle`, which now also installs two
+casks: the [Ghostty](https://ghostty.org) terminal and the JetBrainsMono Nerd
+Font. After the first install, open Ghostty and it picks up
+`~/.config/ghostty/config` automatically. If you stay on Apple Terminal or
+another emulator, set its font to "JetBrainsMono Nerd Font" so Starship and
+`eza` icons render.
+
+The shared zsh configuration wires up:
+
+- **Starship** prompt from the managed `~/.config/starship.toml`.
+- **zsh-autosuggestions**, **zsh-syntax-highlighting**, and
+  **zsh-history-substring-search** (Up/Down and `Ctrl-P`/`Ctrl-N` search
+  history by the current prefix). These are sourced only when the Homebrew
+  packages are present.
+- Cached `compinit` (full security check at most once every 24h) plus
+  case-insensitive, menu-select completion.
+- `eza` aliases (`ls`, `ll`, `la`, `lt`), `fzf` key bindings backed by `fd`,
+  `bat` as the man pager, and `Ctrl-X Ctrl-E` to edit the current command in
+  `$EDITOR`.
+
+Git uses [delta](https://dandavison.github.io/delta/) as its pager and
+diff filter (`core.pager`, `interactive.diffFilter`).
+
+Open a new login shell (`exec zsh -l`) after installing the tools so the new
+PATH and plugins load.
+
 ## Runtime tools
 
 Use `mise` for language runtimes and versions. For example:

@@ -18,6 +18,18 @@
 	algorithm = histogram
 	colorMoved = zebra
 
+[core]
+	excludesFile = ~/.config/git/ignore
+	pager = delta
+
+[interactive]
+	diffFilter = delta --color-only
+
+[delta]
+	navigate = true
+	line-numbers = true
+	hyperlinks = true
+
 [rerere]
 	enabled = true
 	autoupdate = true
@@ -27,9 +39,6 @@
 
 [tag]
 	sort = version:refname
-
-[core]
-	excludesFile = ~/.config/git/ignore
 
 [alias]
 	co = switch
