@@ -26,6 +26,9 @@ assert_not_ignored() {
 }
 
 assert_file "$ROOT_DIR/.gitignore"
+assert_file "$ROOT_DIR/LICENSE"
+assert_file "$ROOT_DIR/README.md"
+assert_contains "$ROOT_DIR/LICENSE" "MIT License"
 assert_file "$ROOT_DIR/Brewfile"
 assert_file "$ROOT_DIR/git/.gitignore_global"
 assert_contains "$ROOT_DIR/.gitignore" ".env"
@@ -55,6 +58,7 @@ assert_contains "$ROOT_DIR/git/.gitignore_global" ".DS_Store"
 assert_ignored ".env"
 assert_ignored "credentials.pem"
 assert_ignored ".codex/state.json"
+assert_ignored "docs/superpowers/plans/example.md"
 assert_ignored "notes.log"
 assert_ignored ".DS_Store"
 assert_ignored "scratch.swp"

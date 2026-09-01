@@ -1,123 +1,149 @@
-# Dotfiles Foundation
+# Dotfiles
 
-Portable, macOS-first dotfiles for zsh, Git, developer CLI tools, and a
-Colima-backed Docker workflow. Shared configuration is kept in this
-repository; credentials, Git identity, and machine-specific overrides stay
-outside it.
+[![CI](https://github.com/rizalord/dotfiles/actions/workflows/ci.yml/badge.svg)](https://github.com/rizalord/dotfiles/actions/workflows/ci.yml)
 
-## Quick start
+Portable, macOS-first configuration for **zsh**, **Git**, a modern terminal, a
+set of developer CLIs, and a Colima-backed Docker workflow.
 
-The supported first setup on macOS is:
+The guiding rule: **shared configuration lives in this repository; secrets,
+your Git identity, and machine-specific settings never do.** A small install
+script symlinks the tracked files into place and backs up whatever was there
+before.
+
+---
+
+## Table of contents
+
+- [What you get](#what-you-get)
+- [Requirements](#requirements)
+- [Install](#install)
+- [What the installer links](#what-the-installer-links)
+- [First-run setup (SSH, Git identity, sign-in)](#first-run-setup)
+- [Living in the shell](#living-in-the-shell)
+- [Local, per-machine overrides](#local-per-machine-overrides)
+- [Optional: macOS system defaults](#optional-macos-system-defaults)
+- [Updating](#updating)
+- [Undo: restoring from a backup](#undo-restoring-from-a-backup)
+- [How it stays safe](#how-it-stays-safe)
+- [Development](#development)
+- [License](#license)
+
+---
+
+## What you get
+
+| Area | Highlights |
+| --- | --- |
+| **Terminal** | [Ghostty](https://ghostty.org) config + JetBrainsMono Nerd Font, light/dark auto theme |
+| **Prompt** | [Starship](https://starship.rs) — directory, Git state, runtime versions, command duration |
+| **Shell** | autosuggestions, syntax highlighting, history-substring search, cached completion, `fzf` bindings |
+| **Listing / paging** | `eza` aliases, `bat` man pages, `delta` for Git diffs |
+| **Runtimes** | [`mise`](https://mise.jdx.dev) for Node/other languages — no global Homebrew Node |
+| **Containers** | Colima + the Docker CLI (Buildx and Compose plugins wired up) |
+| **Greeting** | `fastfetch` system summary on a new terminal (toggleable) |
+| **Safety** | idempotent installer, timestamped backups, secret/path scanner, CI on every push |
+
+Everything is plain files and a POSIX shell script. No dotfile framework
+(no chezmoi, no GNU Stow).
+
+---
+
+## Requirements
+
+- **macOS** (Apple Silicon or Intel). The shell and Git parts also work on
+  Linux, but the Homebrew bundle and Docker setup are macOS-only.
+- **Git** and **zsh** (zsh ships with modern macOS).
+- **[Homebrew](https://brew.sh)** — install it first if you do not have it:
+
+  ```sh
+  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+  ```
+
+---
+
+## Install
 
 ```sh
+# 1. Clone the repo (any location works; this is just a common choice)
 git clone git@github.com:rizalord/dotfiles.git "$HOME/src/dotfiles"
 cd "$HOME/src/dotfiles"
+
+# 2. Preview what will change — nothing is written yet
 ./install.sh --dry-run
+
+# 3. Create the symlinks (existing files are backed up first)
 ./install.sh
+
+# 4. Install the CLI tools and apps via Homebrew
 ./scripts/install-tools.sh
-```
 
-After the tool installer returns, open a new zsh login shell before
-continuing (for example, run `exec zsh -l`), or refresh the relevant PATH
-entries manually. The installer runs as a child process, so exports it makes
-cannot update the parent shell's PATH; a new login shell rereads the zsh
-configuration and sees the installed tools. In the new shell, run:
+# 5. Start a fresh login shell so the new PATH and plugins load
+exec zsh -l
 
-```sh
+# 6. Verify everything
 ./scripts/check.sh --installed --strict-tools
 ```
 
-`--dry-run` prints the installer plan without creating links, backups, or
-Git configuration. The installer is safe to run again: managed links that
-already point at this checkout are kept as-is, while other existing targets
-are moved to a timestamped backup before replacement.
+**What each step does**
 
-The tool installer uses Homebrew on macOS, manages Node.js with `mise`, and
-does not log in to any service. It installs the optional Codex and Claude Code
-CLIs only when they are missing. Node is deliberately not installed as a
-global Homebrew formula.
+- `install.sh` only manages symlinks, backups, and one Git `include` line. It
+  never installs software, logs in anywhere, or touches the network.
+- `scripts/install-tools.sh` runs `brew bundle` against the [`Brewfile`](Brewfile),
+  sets up Node through `mise`, and configures the Docker CLI plugins. It
+  installs the optional Codex / Claude Code CLIs only if they are missing and
+  never signs in to anything.
+- Step 5 matters because the installer runs in a child process — it cannot
+  change your current shell's `PATH`. A new login shell re-reads the config
+  and sees the tools.
 
-## Terminal and shell experience
+The installer is safe to re-run. Links that already point at your checkout
+are left alone; anything else in the way is moved to a timestamped backup
+(see [Undo](#undo-restoring-from-a-backup)) before the symlink is created.
 
-`./scripts/install-tools.sh` runs `brew bundle`, which now also installs two
-casks: the [Ghostty](https://ghostty.org) terminal and the JetBrainsMono Nerd
-Font. After the first install, open Ghostty and it picks up
-`~/.config/ghostty/config` automatically. If you stay on Apple Terminal or
-another emulator, set its font to "JetBrainsMono Nerd Font" so Starship and
-`eza` icons render.
+---
 
-The shared zsh configuration wires up:
+## What the installer links
 
-- **Starship** prompt from the managed `~/.config/starship.toml`.
-- **zsh-autosuggestions**, **zsh-syntax-highlighting**, and
-  **zsh-history-substring-search** (Up/Down and `Ctrl-P`/`Ctrl-N` search
-  history by the current prefix). These are sourced only when the Homebrew
-  packages are present.
-- Cached `compinit` (full security check at most once every 24h) plus
-  case-insensitive, menu-select completion.
-- `eza` aliases (`ls`, `ll`, `la`, `lt`), `fzf` key bindings backed by `fd`,
-  `bat` as the man pager, and `Ctrl-X Ctrl-E` to edit the current command in
-  `$EDITOR`.
-- **fastfetch** greeting on a new top-level shell, from the managed
-  `~/.config/fastfetch/config.jsonc`. It is skipped for nested shells and
-  non-interactive output; set `DOTFILES_NO_FASTFETCH=1` (e.g. in
-  `~/.config/zsh/local.zsh`) to turn it off.
+| Repository file | Symlinked to |
+| --- | --- |
+| `zsh/.zshrc` | `~/.zshrc` |
+| `zsh/.zprofile` | `~/.zprofile` |
+| `git/.gitconfig` | `~/.config/git/dotfiles.gitconfig` (added via `include.path`) |
+| `git/.gitignore_global` | `~/.config/git/ignore` |
+| `starship/starship.toml` | `~/.config/starship.toml` |
+| `ghostty/config` | `~/.config/ghostty/config` |
+| `fastfetch/config.jsonc` | `~/.config/fastfetch/config.jsonc` |
+| `ssh/config` | `~/.ssh/config` (and `~/.ssh` is tightened to `700`) |
 
-Git uses [delta](https://dandavison.github.io/delta/) as its pager and
-diff filter (`core.pager`, `interactive.diffFilter`).
+Your existing global Git config keeps its own identity and settings — the
+shared preferences are pulled in through a single `include.path` line, so
+`git config --global user.name` still wins.
 
-Open a new login shell (`exec zsh -l`) after installing the tools so the new
-PATH and plugins load.
-
-## Runtime tools
-
-Use `mise` for language runtimes and versions. For example:
+If you set a custom `XDG_CONFIG_HOME`, the Git files and include move under
+that directory. The shared `core.excludesFile` still points at
+`~/.config/git/ignore`, so in that case set it explicitly once:
 
 ```sh
-mise use --global node@lts
+git config --global core.excludesFile "$XDG_CONFIG_HOME/git/ignore"
 ```
 
-On macOS, Colima is the container runtime used by the Docker CLI. Start it
-when you need containers, then verify Docker and Compose:
+---
 
-```sh
-colima start
-docker run --rm hello-world
-docker compose version
-```
+## First-run setup
 
-Linux can use the shell and Git portions of this repository, but the
-Homebrew bundle is skipped there. Docker Engine and Portainer provisioning
-are intentionally outside this foundation because Linux setup depends on the
-distribution's package manager, systemd, firewall, and root permissions.
+The installer deliberately does **not** create keys or sign you in. Do these
+once per machine.
 
-## Authentication and local settings
+### 1. SSH key
 
-The expected default SSH authentication key is `~/.ssh/id_ed25519`. The
-installer does not create keys, copy private keys, or copy credential stores.
-Handle SSH authentication manually after installation. If the default key
-already exists, use it; generate one only when it is absent:
+Use your existing `~/.ssh/id_ed25519`, or create one:
 
 ```sh
 SSH_KEY="$HOME/.ssh/id_ed25519"
-if [ ! -f "$SSH_KEY" ]; then
-  umask 077
-  ssh-keygen -t ed25519 -f "$SSH_KEY" -C "you@example.com"
-fi
-if [ ! -f "$SSH_KEY.pub" ]; then
-  ssh-keygen -y -f "$SSH_KEY" > "$SSH_KEY.pub"
-fi
+[ -f "$SSH_KEY" ] || { umask 077; ssh-keygen -t ed25519 -f "$SSH_KEY" -C "you@example.com"; }
 ```
 
-The installer links a managed `~/.ssh/config` (`ssh/config` in this repo). It
-sets `AddKeysToAgent`, `UseKeychain` (guarded by `IgnoreUnknown` so it stays
-valid off macOS), connection keepalives, and `HashKnownHosts` — no hosts and
-no secrets. Machine-specific `Host` blocks, ports, and `IdentityFile` lines
-go in `~/.ssh/config.local`, which the managed file `Include`s and which is
-never tracked here.
-
-On macOS, add the key to the Apple keychain, copy the public key, and add it
-to the SSH keys page for each service:
+On macOS, load it into the agent and Apple keychain, then copy the public key:
 
 ```sh
 eval "$(ssh-agent -s)"
@@ -125,17 +151,29 @@ ssh-add --apple-use-keychain "$SSH_KEY"
 pbcopy < "$SSH_KEY.pub"
 ```
 
-Paste the copied key into GitHub **Settings → SSH and GPG keys** and GitLab
-**Preferences/Settings → SSH Keys**, then test both connections:
+The managed `~/.ssh/config` sets `AddKeysToAgent` and `UseKeychain` (guarded
+by `IgnoreUnknown` so the file is still valid on Linux), keepalives, and
+`HashKnownHosts`. It contains **no hosts and no secrets**. Put machine-specific
+`Host` blocks and `IdentityFile` lines in `~/.ssh/config.local` — the managed
+file `Include`s it and it is never tracked here.
+
+Add the public key to your Git hosts, then test:
 
 ```sh
 ssh -T git@github.com
 ssh -T git@gitlab.com
 ```
 
-The installer remains non-authenticated and never runs these commands.
+### 2. Git identity
 
-After the tools are installed, authenticate manually when needed:
+Kept out of the repo on purpose. Set it in your global config:
+
+```sh
+git config --global user.name "Your Name"
+git config --global user.email "you@example.com"
+```
+
+### 3. Sign in to CLIs (as needed)
 
 ```sh
 gh auth login
@@ -144,125 +182,175 @@ codex login
 claude login
 ```
 
-These commands are intentionally not run by the installer and any tokens stay
-in each tool's normal local credential storage.
+Tokens stay in each tool's own credential store.
 
-To register the VS Code `code` command, open VS Code's Command Palette and
-run **Shell Command: Install 'code' command in PATH**. The checker treats
-`code` as an optional command.
+### 4. VS Code `code` command
 
-Machine-specific zsh settings belong in
-`~/.config/zsh/local.zsh`. This file is sourced only when it exists and is
-not tracked by the repository. Use it for local PATH entries, environment
-variables, or aliases that should not become shared configuration.
+In VS Code, open the Command Palette and run
+**Shell Command: Install 'code' command in PATH**. `check.sh` treats `code`
+as optional.
 
-Git identity also remains local to the machine, outside the shared
-`git/.gitconfig`. Set it in the user's global Git config, for example:
+---
+
+## Living in the shell
+
+After `exec zsh -l` you have:
+
+- **Starship prompt** — two lines: path + Git status, then runtime versions
+  and the `❯` character (green on success, red on failure).
+- **Autosuggestions** — fish-style grey completion from history; press `→` to
+  accept.
+- **Syntax highlighting** as you type.
+- **History-substring search** — type a prefix, then `↑` / `↓` (or
+  `Ctrl-P` / `Ctrl-N`) to walk matching commands.
+- **Smart completion** — case-insensitive, menu-selectable, cached (`compinit`
+  runs its full security check at most once a day, so shells start fast).
+- **`fzf`** — `Ctrl-T` (files), `Ctrl-R` (history), `Alt-C` (cd), backed by
+  `fd`.
+- **`eza` aliases** — `ls`, `ll`, `la`, `lt` (tree), with icons and Git status.
+- **`bat`** as the man-page pager.
+- **`Ctrl-X Ctrl-E`** — open the current command line in `$EDITOR`.
+- **`fastfetch`** greeting on a new top-level shell. Skipped for nested and
+  non-interactive shells; disable it with `DOTFILES_NO_FASTFETCH=1` in
+  `~/.config/zsh/local.zsh`.
+
+**Git** uses `delta` as its pager and diff filter, plus sensible defaults
+(`pull.rebase`, `fetch.prune`, `push.autoSetupRemote`, `rerere`, `zdiff3`
+conflict style, histogram diff) and short aliases (`co`, `ci`, `st`, `lg`,
+`last`, `unstage`, `amend`).
+
+**Containers** on macOS run through Colima:
 
 ```sh
-git config --global user.name "Your Name"
-git config --global user.email "you@example.com"
+colima start
+docker run --rm hello-world
+docker compose version
 ```
 
-## macOS defaults
-
-`scripts/macos-defaults.sh` is an opt-in script — the installer never runs it.
-It applies developer-friendly system defaults: fast key repeat, no
-press-and-hold accent popover, disabled text substitutions, Finder tweaks
-(extensions, path/status bar, list view, folders first, POSIX path in title),
-screenshots as shadowless PNGs in `~/Screenshots`, and a faster auto-hiding
-Dock. Preview first, then apply:
+**Runtimes** are managed by `mise`:
 
 ```sh
-./scripts/macos-defaults.sh --dry-run
-./scripts/macos-defaults.sh
+mise use --global node@lts
 ```
 
-It refuses to run off macOS and every setting is reversible with `defaults
-delete` or the matching System Settings toggle.
+---
 
-## Continuous integration
+## Local, per-machine overrides
 
-`.github/workflows/ci.yml` runs on every push to `main` and every pull
-request: `shellcheck` on `ubuntu-latest`, then `./scripts/test.sh` on
-`macos-latest` (the test suite exercises the Homebrew bundle, Docker CLI
-plugin config, and zsh, so it targets macOS). Repo-wide ShellCheck exceptions
-live in `.shellcheckrc`, each annotated with why the pattern is intentional.
+Nothing machine-specific belongs in the repo. Three escape hatches:
 
-The shared preferences are included through
-`~/.config/git/dotfiles.gitconfig`; they contain no identity, signing key, or
-credential helper.
+| File (not tracked) | Use it for |
+| --- | --- |
+| `~/.config/zsh/local.zsh` | local `PATH`, env vars, aliases; sourced if present |
+| `~/.ssh/config.local` | private hosts, jump boxes, per-host `IdentityFile` |
+| global Git config | your name, email, signing key, credential helper |
 
-With a custom `XDG_CONFIG_HOME`, the installer puts its Git symlinks and
-include at `$XDG_CONFIG_HOME/git/dotfiles.gitconfig` and
-`$XDG_CONFIG_HOME/git/ignore`. The shared config's
-`core.excludesFile` intentionally remains `~/.config/git/ignore`, so custom
-XDG users must set the global excludes file explicitly after installation:
+---
+
+## Optional: macOS system defaults
+
+[`scripts/macos-defaults.sh`](scripts/macos-defaults.sh) is **opt-in** — the
+installer never runs it. It applies developer-friendly `defaults`: fast key
+repeat, no press-and-hold accent popup, disabled text substitutions, Finder
+tweaks (extensions, path bar, list view, folders first), shadowless PNG
+screenshots in `~/Screenshots`, and a faster auto-hiding Dock.
 
 ```sh
-git config --global core.excludesFile "$XDG_CONFIG_HOME/git/ignore"
+./scripts/macos-defaults.sh --dry-run   # show what would change
+./scripts/macos-defaults.sh             # apply, then restart Finder/Dock
 ```
 
-## Recovery and verification
+It refuses to run off macOS, and every setting is reversible with
+`defaults delete` or the matching System Settings toggle.
 
-When the installer replaces an existing file, it preserves the old item under
-`~/.local/state/dotfiles-backups/` in a directory named
-`<YYYYMMDD-HHMMSS>-<pid>-<attempt>` (for example,
-`20260830-120000-24187-0`). To recover `.zshrc`, first inspect the backups.
-Before unlinking anything, verify that `.zshrc` is still the expected
-managed symlink to this checkout. Then move the desired backup back into
-place:
+---
+
+## Updating
 
 ```sh
-find "$HOME/.local/state/dotfiles-backups" -name .zshrc -print
-BACKUP_DIR="$HOME/.local/state/dotfiles-backups/<YYYYMMDD-HHMMSS>-<pid>-<attempt>"
-DOTFILES_ROOT="$HOME/src/dotfiles"  # adjust if this checkout is elsewhere
-if [ -L "$HOME/.zshrc" ] \
-  && [ "$(readlink "$HOME/.zshrc")" = "$DOTFILES_ROOT/zsh/.zshrc" ]; then
-  unlink "$HOME/.zshrc"
-else
-  printf 'refusing to unlink unexpected ~/.zshrc\n' >&2
-  exit 1
-fi
-test -f "$BACKUP_DIR/.zshrc"
-mv "$BACKUP_DIR/.zshrc" "$HOME/.zshrc"
-```
-
-Replace the angle-bracket placeholders in `BACKUP_DIR` with the actual
-directory selected from `find`. Do not remove a backup until the restored
-file has been checked. The installer does not automatically remove backup
-data.
-
-Useful read-only and inspection commands are:
-
-```sh
-./install.sh --dry-run
-./scripts/check.sh
-./scripts/check.sh --installed
-./scripts/check.sh --installed --strict-tools
-./scripts/test.sh
-```
-
-Without `--strict-tools`, unavailable optional commands are reported as
-warnings. `--strict-tools` makes missing tools fail the check. The test
-runner is network-free, uses a temporary `HOME` and Git config, and removes
-that temporary state when it exits.
-
-## Two-remote workflow
-
-Keep GitHub as the primary `origin`. Add the GitLab mirror once if it is not
-already configured:
-
-```sh
-git remote add gitlab git@gitlab.com:rizalord/dotfiles.git
-```
-
-Synchronize and publish explicitly to each remote:
-
-```sh
+cd "$HOME/src/dotfiles"
 git pull --rebase origin main
+./install.sh              # pick up any new managed files
+./scripts/install-tools.sh   # pick up Brewfile changes
+```
+
+---
+
+## Undo: restoring from a backup
+
+When the installer replaces a file, the original is moved to:
+
+```
+~/.local/state/dotfiles-backups/<YYYYMMDD-HHMMSS>-<pid>-<attempt>/
+```
+
+Backups are never deleted automatically. To restore, for example, `~/.zshrc`:
+
+```sh
+# 1. Find the backup
+find "$HOME/.local/state/dotfiles-backups" -name .zshrc -print
+
+# 2. Restore it, but only if ~/.zshrc is still our symlink
+BACKUP="$HOME/.local/state/dotfiles-backups/<dir>/.zshrc"
+DOTFILES_ROOT="$HOME/src/dotfiles"   # adjust if cloned elsewhere
+if [ -L "$HOME/.zshrc" ] && [ "$(readlink "$HOME/.zshrc")" = "$DOTFILES_ROOT/zsh/.zshrc" ]; then
+  unlink "$HOME/.zshrc"
+  mv "$BACKUP" "$HOME/.zshrc"
+else
+  echo "refusing to touch an unexpected ~/.zshrc" >&2
+fi
+```
+
+To fully opt out, `unlink` each managed symlink listed
+[above](#what-the-installer-links), restore the backups you want, and remove
+the `include.path` line from your global Git config.
+
+---
+
+## How it stays safe
+
+- **No secrets in the repo.** [`git/.gitconfig`](git/.gitconfig) has no
+  identity, signing key, or credential helper. [`ssh/config`](ssh/config) has
+  no hosts. There are no tokens or private keys anywhere.
+- **`.gitignore`** blocks `.env*`, `*.pem`, `*.key`, SSH private keys,
+  `*.local`, `*.secret(s)`, tool state dirs (`.claude/`, `.codex/`,
+  `.docker/`, `.colima/`), and local Compose overrides.
+- **`scripts/check.sh`** scans every tracked file for API-key patterns,
+  private-key headers, and personal absolute paths, and fails if it finds
+  one.
+- **CI** runs `shellcheck` and the full test suite on every push and pull
+  request.
+- The installer and test runner **never** fetch, push, or authenticate.
+
+---
+
+## Development
+
+```sh
+./scripts/check.sh                 # static checks: syntax, Git config, secret scan
+./scripts/check.sh --installed     # also verify the live symlinks
+./scripts/test.sh                  # full suite (temporary HOME, no network)
+shellcheck install.sh scripts/*.sh tests/*.sh
+```
+
+- Tests live in [`tests/`](tests) and run against a throwaway `HOME`.
+- [`.github/workflows/ci.yml`](.github/workflows/ci.yml): `shellcheck` on
+  `ubuntu-latest`, then `./scripts/test.sh` on `macos-latest` (the suite
+  exercises Homebrew, Docker, and zsh, so it targets macOS).
+- [`.shellcheckrc`](.shellcheckrc) documents each repo-wide lint exception.
+
+### Two-remote workflow
+
+GitHub `origin` is primary; GitLab is an explicit mirror.
+
+```sh
+git remote add gitlab git@gitlab.com:rizalord/dotfiles.git   # one time
 git push origin main
 git push gitlab main
 ```
 
-The installer and test runner never pull, push, or log in automatically.
+---
+
+## License
+
+[MIT](LICENSE) © Ahmad Khamdani

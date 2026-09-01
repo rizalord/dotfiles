@@ -84,6 +84,8 @@ check_managed_link() {
 }
 
 check_file "$ROOT_DIR/.gitignore"
+check_file "$ROOT_DIR/LICENSE"
+check_file "$ROOT_DIR/README.md"
 check_file "$ROOT_DIR/Brewfile"
 check_file "$ROOT_DIR/git/.gitconfig"
 check_file "$ROOT_DIR/git/.gitignore_global"
@@ -131,6 +133,8 @@ else
   fail 'shared Git configuration is invalid'
 fi
 
+# Reject secrets and personal absolute paths from tracked content. Markers are
+# split with quotes so this script never matches itself.
 readonly private_key_prefix='BEGIN '
 readonly private_key_suffix='.* PRIVATE KEY'
 readonly private_key_pattern="${private_key_prefix}${private_key_suffix}"
@@ -139,23 +143,6 @@ readonly openai_marker="OPENAI_API_KEY"'='
 readonly anthropic_marker="ANTHROPIC_API_KEY"'='
 readonly github_marker='gho''_'
 readonly gitlab_marker='glpat''-'
-readonly known_policy_path='docs/superpowers/plans/2026-08-30-dotfiles-foundation.md'
-readonly known_policy_line_1="membuat shell gagal start. Jangan menulis path ${path_marker}."
-readonly known_policy_line_2="memeriksa manifest, dan mencari pola yang dilarang: ${path_marker},"
-readonly known_policy_line_3="${openai_marker}, ${anthropic_marker}, ${github_marker}, ${gitlab_marker}, ${private_key_pattern},"
-readonly known_policy_line_4="    git ls-files -z | xargs -0 rg -n '${openai_marker}|${anthropic_marker}|${gitlab_marker}|${github_marker}|${path_marker}|BEGIN .*PRIVATE KEY' || true"
-
-security_match_is_known_example() {
-  local path="$1"
-  local line_text="$2"
-
-  [ "$path" = "$known_policy_path" ] || return 1
-  [ "$line_text" = "$known_policy_line_1" ] && return 0
-  [ "$line_text" = "$known_policy_line_2" ] && return 0
-  [ "$line_text" = "$known_policy_line_3" ] && return 0
-  [ "$line_text" = "$known_policy_line_4" ] && return 0
-  return 1
-}
 
 for forbidden_pattern in \
   "$path_marker" \
@@ -164,21 +151,7 @@ for forbidden_pattern in \
   "$github_marker" \
   "$gitlab_marker" \
   "$private_key_pattern"; do
-  matching_paths=$(git -C "$ROOT_DIR" grep -lE -- "$forbidden_pattern" -- . 2>/dev/null || true)
-  security_violation=false
-  if [ -n "$matching_paths" ]; then
-    while IFS= read -r tracked_path; do
-      [ -n "$tracked_path" ] || continue
-      while IFS= read -r tracked_line || [ -n "$tracked_line" ]; do
-        if [[ "$tracked_line" =~ $forbidden_pattern ]] \
-          && ! security_match_is_known_example "$tracked_path" "$tracked_line"; then
-          security_violation=true
-          break 2
-        fi
-      done < "$ROOT_DIR/$tracked_path"
-    done <<<"$matching_paths"
-  fi
-  if [ "$security_violation" = true ]; then
+  if git -C "$ROOT_DIR" grep -lIE -- "$forbidden_pattern" -- . >/dev/null 2>&1; then
     fail "forbidden tracked content matches: $forbidden_pattern"
   else
     pass "security pattern absent: $forbidden_pattern"
