@@ -86,6 +86,12 @@ if (( $+commands[starship] )); then
   eval "$(starship init zsh)"
 fi
 
+# Greet a new top-level shell with a system summary. Skipped for nested shells,
+# non-tty stdout, and when DOTFILES_NO_FASTFETCH is set.
+if (( $+commands[fastfetch] )) && [[ -t 1 && $SHLVL -eq 1 && -z $DOTFILES_NO_FASTFETCH ]]; then
+  fastfetch
+fi
+
 # Interactive plugins, installed via Homebrew and skipped when absent.
 _zsh_plugin_dir="${HOMEBREW_PREFIX:-/opt/homebrew}/share"
 ZSH_AUTOSUGGEST_STRATEGY=(history completion)

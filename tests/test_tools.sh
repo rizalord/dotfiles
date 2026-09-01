@@ -391,6 +391,8 @@ assert_exact_links() {
   test "$(readlink "$config_dir/starship.toml")" = "$ROOT_DIR/starship/starship.toml"
   test -L "$config_dir/ghostty/config"
   test "$(readlink "$config_dir/ghostty/config")" = "$ROOT_DIR/ghostty/config"
+  test -L "$config_dir/fastfetch/config.jsonc"
+  test "$(readlink "$config_dir/fastfetch/config.jsonc")" = "$ROOT_DIR/fastfetch/config.jsonc"
 }
 
 DEFAULT_HOME="$TMP_ROOT/default-home"

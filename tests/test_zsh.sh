@@ -15,6 +15,7 @@ assert_contains "$ROOT_DIR/zsh/.zshrc" 'local.zsh'
 assert_contains "$ROOT_DIR/zsh/.zshrc" 'compinit'
 assert_contains "$ROOT_DIR/zsh/.zshrc" 'zsh-syntax-highlighting'
 assert_contains "$ROOT_DIR/zsh/.zshrc" 'starship init zsh'
+assert_contains "$ROOT_DIR/zsh/.zshrc" 'fastfetch'
 
 TMP_HOME=$(mktemp -d)
 trap 'rm -rf -- "$TMP_HOME"' EXIT

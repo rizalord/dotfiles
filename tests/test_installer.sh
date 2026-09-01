@@ -66,6 +66,8 @@ test -L "$CONFIG_HOME/starship.toml"
 test "$(readlink "$CONFIG_HOME/starship.toml")" = "$ROOT_DIR/starship/starship.toml"
 test -L "$CONFIG_HOME/ghostty/config"
 test "$(readlink "$CONFIG_HOME/ghostty/config")" = "$ROOT_DIR/ghostty/config"
+test -L "$CONFIG_HOME/fastfetch/config.jsonc"
+test "$(readlink "$CONFIG_HOME/fastfetch/config.jsonc")" = "$ROOT_DIR/fastfetch/config.jsonc"
 EXPECTED_GIT_INCLUDE="$CONFIG_HOME/git/dotfiles.gitconfig"
 test "$(git_global --get-all include.path)" = "$EXPECTED_GIT_INCLUDE"
 test "$(git_effective --get init.defaultBranch)" = main

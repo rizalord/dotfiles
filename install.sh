@@ -167,4 +167,5 @@ link_managed_file "$ROOT_DIR/git/.gitconfig" "$XDG_CONFIG_HOME/git/dotfiles.gitc
 link_managed_file "$ROOT_DIR/git/.gitignore_global" "$XDG_CONFIG_HOME/git/ignore"
 link_managed_file "$ROOT_DIR/starship/starship.toml" "$XDG_CONFIG_HOME/starship.toml"
 link_managed_file "$ROOT_DIR/ghostty/config" "$XDG_CONFIG_HOME/ghostty/config"
+link_managed_file "$ROOT_DIR/fastfetch/config.jsonc" "$XDG_CONFIG_HOME/fastfetch/config.jsonc"
 ensure_git_include
