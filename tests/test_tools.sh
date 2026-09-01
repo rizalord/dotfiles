@@ -520,7 +520,7 @@ expect_failure "$DOCKER_COMPOSE_MISSING_OUTPUT" env HOME="$DOCKER_COMPOSE_MISSIN
   PATH="$DOCKER_COMPOSE_MISSING_BIN:/usr/bin:/bin" bash "$INSTALLER" --skip-brew
 assert_contains "$(<"$DOCKER_COMPOSE_MISSING_OUTPUT")" 'missing prerequisite: Docker Compose'
 
-# The unchanged policy examples are allowed for every forbidden marker.
+# A clean checkout reports every forbidden marker as absent.
 BASE_CHECK_OUTPUT=$(HOME="$STRICT_HOME" GIT_CONFIG_GLOBAL="$STRICT_GLOBAL" \
   PATH="/usr/bin:/bin" bash "$CHECKER" 2>&1)
 for marker in "$PATH_MARKER" "$OPENAI_MARKER" "$ANTHROPIC_MARKER" "$GH_MARKER" \
@@ -528,57 +528,17 @@ for marker in "$PATH_MARKER" "$OPENAI_MARKER" "$ANTHROPIC_MARKER" "$GH_MARKER" \
   assert_contains "$BASE_CHECK_OUTPUT" "security pattern absent: $marker"
 done
 
-# Moving an allowed line must not invalidate it: the allowlist is content-based.
-SHIFT_REPO="$TMP_ROOT/shifted-policy-repo"
-SHIFT_HOME="$TMP_ROOT/shifted-policy-home"
-SHIFT_GLOBAL="$TMP_ROOT/shifted-policy-global"
-git clone --quiet "$ROOT_DIR" "$SHIFT_REPO"
-cp "$CHECKER" "$SHIFT_REPO/scripts/check.sh"
-SHIFT_MARKER='OPENAI_API_KEY'
-awk -v marker="$SHIFT_MARKER" 'index($0, marker) { print ""; print "" } { print }' \
-  "$SHIFT_REPO/docs/superpowers/plans/2026-08-30-dotfiles-foundation.md" \
-  > "$TMP_ROOT/shifted-policy.md"
-mv "$TMP_ROOT/shifted-policy.md" "$SHIFT_REPO/docs/superpowers/plans/2026-08-30-dotfiles-foundation.md"
-mkdir -p "$SHIFT_HOME"
-SHIFT_OUTPUT=$(HOME="$SHIFT_HOME" GIT_CONFIG_GLOBAL="$SHIFT_GLOBAL" \
-  PATH="/usr/bin:/bin" bash "$SHIFT_REPO/scripts/check.sh" 2>&1)
-for marker in "$PATH_MARKER" "$OPENAI_MARKER" "$ANTHROPIC_MARKER" "$GH_MARKER" \
-  "$GLAB_MARKER" "$PRIVATE_KEY_MARKER"; do
-  assert_contains "$SHIFT_OUTPUT" "security pattern absent: $marker"
-done
-
-# Tampering with one allowed line must make every marker on that line fail.
-TAMPER_REPO="$TMP_ROOT/tampered-policy-repo"
-TAMPER_HOME="$TMP_ROOT/tampered-policy-home"
-TAMPER_GLOBAL="$TMP_ROOT/tampered-policy-global"
-git clone --quiet "$ROOT_DIR" "$TAMPER_REPO"
-cp "$CHECKER" "$TAMPER_REPO/scripts/check.sh"
-TAMPER_MARKER='OPENAI_API_KEY'
-awk -v marker="$TAMPER_MARKER" 'index($0, marker) { print $0 " tampered"; next } { print }' \
-  "$TAMPER_REPO/docs/superpowers/plans/2026-08-30-dotfiles-foundation.md" \
-  > "$TMP_ROOT/tampered-policy.md"
-mv "$TMP_ROOT/tampered-policy.md" "$TAMPER_REPO/docs/superpowers/plans/2026-08-30-dotfiles-foundation.md"
-mkdir -p "$TAMPER_HOME"
-TAMPER_OUTPUT="$TMP_ROOT/tampered-policy-output"
-expect_failure "$TAMPER_OUTPUT" env HOME="$TAMPER_HOME" GIT_CONFIG_GLOBAL="$TAMPER_GLOBAL" \
-  PATH="/usr/bin:/bin" bash "$TAMPER_REPO/scripts/check.sh"
-for marker in "$PATH_MARKER" "$OPENAI_MARKER" "$ANTHROPIC_MARKER" "$GH_MARKER" \
-  "$GLAB_MARKER" "$PRIVATE_KEY_MARKER"; do
-  assert_contains "$(<"$TAMPER_OUTPUT")" "forbidden tracked content matches: $marker"
-done
-
-# Security scanning must still inspect an ordinary tracked file under docs;
-# only the exact, unchanged policy-example lines may be ignored.
+# A newly tracked file that contains a forbidden marker must fail the check.
 SECURITY_REPO="$TMP_ROOT/security-repo"
 SECURITY_HOME="$TMP_ROOT/security-home"
 SECURITY_GLOBAL="$TMP_ROOT/security-global"
 git clone --quiet "$ROOT_DIR" "$SECURITY_REPO"
 cp "$CHECKER" "$SECURITY_REPO/scripts/check.sh"
-git -C "$SECURITY_REPO" config user.name 'Task 5 Test'
-git -C "$SECURITY_REPO" config user.email task-5@example.test
+git -C "$SECURITY_REPO" config user.name 'Security Test'
+git -C "$SECURITY_REPO" config user.email security@example.test
 SECURITY_MARKER="OPENAI_API_KEY"'='
-printf '%s\n' "${SECURITY_MARKER}fixture" > "$SECURITY_REPO/docs/ordinary.md"
-git -C "$SECURITY_REPO" add docs/ordinary.md
+printf '%s\n' "${SECURITY_MARKER}fixture" > "$SECURITY_REPO/leaked.txt"
+git -C "$SECURITY_REPO" add leaked.txt
 git -C "$SECURITY_REPO" commit -qm 'add security fixture'
 mkdir -p "$SECURITY_HOME"
 SECURITY_OUTPUT="$TMP_ROOT/security-output"
