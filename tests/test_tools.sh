@@ -393,6 +393,8 @@ assert_exact_links() {
   test "$(readlink "$config_dir/ghostty/config")" = "$ROOT_DIR/ghostty/config"
   test -L "$config_dir/fastfetch/config.jsonc"
   test "$(readlink "$config_dir/fastfetch/config.jsonc")" = "$ROOT_DIR/fastfetch/config.jsonc"
+  test -L "$home_dir/.ssh/config"
+  test "$(readlink "$home_dir/.ssh/config")" = "$ROOT_DIR/ssh/config"
 }
 
 DEFAULT_HOME="$TMP_ROOT/default-home"

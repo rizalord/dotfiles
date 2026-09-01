@@ -92,6 +92,9 @@ check_file "$ROOT_DIR/zsh/.zshrc"
 check_file "$ROOT_DIR/starship/starship.toml"
 check_file "$ROOT_DIR/ghostty/config"
 check_file "$ROOT_DIR/fastfetch/config.jsonc"
+check_file "$ROOT_DIR/ssh/config"
+check_file "$ROOT_DIR/scripts/macos-defaults.sh"
+check_file "$ROOT_DIR/.github/workflows/ci.yml"
 
 for formula in gh glab mise colima docker docker-buildx docker-compose; do
   if grep -Fq -- "brew \"$formula\"" "$ROOT_DIR/Brewfile"; then
@@ -209,6 +212,7 @@ if [ "$CHECK_INSTALLED" = true ]; then
   check_managed_link "$XDG_CONFIG_HOME/starship.toml" "$ROOT_DIR/starship/starship.toml"
   check_managed_link "$XDG_CONFIG_HOME/ghostty/config" "$ROOT_DIR/ghostty/config"
   check_managed_link "$XDG_CONFIG_HOME/fastfetch/config.jsonc" "$ROOT_DIR/fastfetch/config.jsonc"
+  check_managed_link "$HOME/.ssh/config" "$ROOT_DIR/ssh/config"
 
   if git config --global --get-all include.path 2>/dev/null | grep -Fxq "$expected_include"; then
     pass "Git include present: $expected_include"
