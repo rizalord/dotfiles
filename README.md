@@ -58,6 +58,10 @@ The shared zsh configuration wires up:
 - `eza` aliases (`ls`, `ll`, `la`, `lt`), `fzf` key bindings backed by `fd`,
   `bat` as the man pager, and `Ctrl-X Ctrl-E` to edit the current command in
   `$EDITOR`.
+- **fastfetch** greeting on a new top-level shell, from the managed
+  `~/.config/fastfetch/config.jsonc`. It is skipped for nested shells and
+  non-interactive output; set `DOTFILES_NO_FASTFETCH=1` (e.g. in
+  `~/.config/zsh/local.zsh`) to turn it off.
 
 Git uses [delta](https://dandavison.github.io/delta/) as its pager and
 diff filter (`core.pager`, `interactive.diffFilter`).
