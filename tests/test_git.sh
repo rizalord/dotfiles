@@ -26,6 +26,9 @@ test "$(git config --file "$CONFIG" --get fetch.prune)" = true
 test "$(git config --file "$CONFIG" --get push.autoSetupRemote)" = true
 test "$(git config --file "$CONFIG" --get rerere.enabled)" = true
 test "$(git config --file "$CONFIG" --get core.excludesFile)" = "~/.config/git/ignore"
+test "$(git config --file "$CONFIG" --get core.pager)" = delta
+test "$(git config --file "$CONFIG" --get interactive.diffFilter)" = "delta --color-only"
+test "$(git config --file "$CONFIG" --get delta.navigate)" = true
 
 EXPECTED_ALIASES=$(
   printf '%s\n' \
