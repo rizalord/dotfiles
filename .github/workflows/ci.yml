@@ -1,0 +1,28 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: ShellCheck
+        run: shellcheck install.sh scripts/*.sh tests/*.sh
+
+  test:
+    # The test suite (Homebrew bundle, Docker CLI plugin config, zsh) targets
+    # macOS, which is what this repo supports.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Test suite
+        run: ./scripts/test.sh

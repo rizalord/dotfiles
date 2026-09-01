@@ -1,0 +1,13 @@
+# Managed by dotfiles. Symlinked to ~/.ssh/config.
+# Machine-specific hosts, ports, and IdentityFile lines belong in
+# ~/.ssh/config.local (not tracked here). Private keys never live in this repo.
+Include ~/.ssh/config.local
+
+Host *
+	# UseKeychain is macOS-only; IgnoreUnknown keeps this file valid elsewhere.
+	IgnoreUnknown UseKeychain
+	AddKeysToAgent yes
+	UseKeychain yes
+	ServerAliveInterval 60
+	ServerAliveCountMax 3
+	HashKnownHosts yes

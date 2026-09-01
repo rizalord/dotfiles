@@ -1,0 +1,11 @@
+# Repo-wide ShellCheck configuration. Each disabled check is a deliberate,
+# reviewed pattern in this codebase, not an unaddressed bug:
+#
+#   SC1007  `CDPATH= cd ...` - intentional empty assignment to neutralise CDPATH
+#   SC2016  single-quoted jq programs and fake-command bodies must NOT expand
+#   SC2088  literal `~/...` strings written verbatim into Git/SSH config or asserts
+#   SC2119  helper functions whose arguments are optional
+#   SC2120  same helpers referencing "$@" without every caller passing args
+#   SC2155  `local var=$(...)` - accepted style here, exit codes are not consumed
+#   SC2295  `${path#$ROOT_DIR/}` - ROOT_DIR is an absolute path with no glob chars
+disable=SC1007,SC2016,SC2088,SC2119,SC2120,SC2155,SC2295

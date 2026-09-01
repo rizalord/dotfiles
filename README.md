@@ -109,6 +109,13 @@ if [ ! -f "$SSH_KEY.pub" ]; then
 fi
 ```
 
+The installer links a managed `~/.ssh/config` (`ssh/config` in this repo). It
+sets `AddKeysToAgent`, `UseKeychain` (guarded by `IgnoreUnknown` so it stays
+valid off macOS), connection keepalives, and `HashKnownHosts` — no hosts and
+no secrets. Machine-specific `Host` blocks, ports, and `IdentityFile` lines
+go in `~/.ssh/config.local`, which the managed file `Include`s and which is
+never tracked here.
+
 On macOS, add the key to the Apple keychain, copy the public key, and add it
 to the SSH keys page for each service:
 
@@ -156,6 +163,31 @@ Git identity also remains local to the machine, outside the shared
 git config --global user.name "Your Name"
 git config --global user.email "you@example.com"
 ```
+
+## macOS defaults
+
+`scripts/macos-defaults.sh` is an opt-in script — the installer never runs it.
+It applies developer-friendly system defaults: fast key repeat, no
+press-and-hold accent popover, disabled text substitutions, Finder tweaks
+(extensions, path/status bar, list view, folders first, POSIX path in title),
+screenshots as shadowless PNGs in `~/Screenshots`, and a faster auto-hiding
+Dock. Preview first, then apply:
+
+```sh
+./scripts/macos-defaults.sh --dry-run
+./scripts/macos-defaults.sh
+```
+
+It refuses to run off macOS and every setting is reversible with `defaults
+delete` or the matching System Settings toggle.
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push to `main` and every pull
+request: `shellcheck` on `ubuntu-latest`, then `./scripts/test.sh` on
+`macos-latest` (the test suite exercises the Homebrew bundle, Docker CLI
+plugin config, and zsh, so it targets macOS). Repo-wide ShellCheck exceptions
+live in `.shellcheckrc`, each annotated with why the pattern is intentional.
 
 The shared preferences are included through
 `~/.config/git/dotfiles.gitconfig`; they contain no identity, signing key, or

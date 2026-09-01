@@ -68,6 +68,8 @@ test -L "$CONFIG_HOME/ghostty/config"
 test "$(readlink "$CONFIG_HOME/ghostty/config")" = "$ROOT_DIR/ghostty/config"
 test -L "$CONFIG_HOME/fastfetch/config.jsonc"
 test "$(readlink "$CONFIG_HOME/fastfetch/config.jsonc")" = "$ROOT_DIR/fastfetch/config.jsonc"
+test -L "$TMP_HOME/.ssh/config"
+test "$(readlink "$TMP_HOME/.ssh/config")" = "$ROOT_DIR/ssh/config"
 EXPECTED_GIT_INCLUDE="$CONFIG_HOME/git/dotfiles.gitconfig"
 test "$(git_global --get-all include.path)" = "$EXPECTED_GIT_INCLUDE"
 test "$(git_effective --get init.defaultBranch)" = main
