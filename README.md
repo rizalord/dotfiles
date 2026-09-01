@@ -183,10 +183,11 @@ delete` or the matching System Settings toggle.
 
 ## Continuous integration
 
-`.github/workflows/ci.yml` runs `shellcheck` and `./scripts/test.sh` on every
-push to `main` and every pull request, on both `ubuntu-latest` and
-`macos-latest`. Repo-wide ShellCheck exceptions live in `.shellcheckrc`, each
-annotated with why the pattern is intentional.
+`.github/workflows/ci.yml` runs on every push to `main` and every pull
+request: `shellcheck` on `ubuntu-latest`, then `./scripts/test.sh` on
+`macos-latest` (the test suite exercises the Homebrew bundle, Docker CLI
+plugin config, and zsh, so it targets macOS). Repo-wide ShellCheck exceptions
+live in `.shellcheckrc`, each annotated with why the pattern is intentional.
 
 The shared preferences are included through
 `~/.config/git/dotfiles.gitconfig`; they contain no identity, signing key, or
