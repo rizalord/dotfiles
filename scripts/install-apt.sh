@@ -3,6 +3,10 @@ set -euo pipefail
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
+# Fail fast instead of hanging forever on a stalled connection (a common
+# failure mode on restrictive networks): 10s to connect, 2 minutes total.
+CURL_TIMEOUT_OPTS=(--connect-timeout 10 --max-time 120)
+
 log() {
   printf '%s\n' "$*"
 }
@@ -48,7 +52,7 @@ github_latest_asset_url() {
   local repo="$1"
   local asset_pattern="$2"
 
-  curl -fsSL "https://api.github.com/repos/$repo/releases/latest" \
+  curl "${CURL_TIMEOUT_OPTS[@]}" -fsSL "https://api.github.com/repos/$repo/releases/latest" \
     | jq -r --arg pattern "$asset_pattern" \
       '.assets[] | select(.name | test($pattern)) | .browser_download_url' \
     | head -n1
@@ -61,7 +65,7 @@ gitlab_latest_asset_url() {
   local asset_pattern="$2"
   local encoded_path="${project_path//\//%2F}"
 
-  curl -fsSL "https://gitlab.com/api/v4/projects/$encoded_path/releases/permalink/latest" \
+  curl "${CURL_TIMEOUT_OPTS[@]}" -fsSL "https://gitlab.com/api/v4/projects/$encoded_path/releases/permalink/latest" \
     | jq -r --arg pattern "$asset_pattern" \
       '.assets.links[] | select(.name | test($pattern)) | .direct_asset_url' \
     | head -n1
@@ -123,7 +127,7 @@ install_eza() {
 
   archive_path=$(mktemp --suffix=.tar.gz)
   extract_dir=$(mktemp -d)
-  curl -fsSL "$download_url" -o "$archive_path"
+  curl "${CURL_TIMEOUT_OPTS[@]}" -fsSL "$download_url" -o "$archive_path"
   tar -xzf "$archive_path" -C "$extract_dir"
   binary_path=$(find "$extract_dir" -type f -name eza | head -n1)
   if [ -z "$binary_path" ]; then
@@ -163,7 +167,7 @@ install_git_delta() {
   fi
 
   deb_path=$(mktemp --suffix=.deb)
-  curl -fsSL "$download_url" -o "$deb_path"
+  curl "${CURL_TIMEOUT_OPTS[@]}" -fsSL "$download_url" -o "$deb_path"
   sudo dpkg -i "$deb_path"
   rm -f "$deb_path"
 }
@@ -179,7 +183,7 @@ install_starship() {
   fi
 
   log 'starship not available via apt; running the official installer.'
-  curl -sS https://starship.rs/install.sh | sh -s -- -y
+  curl "${CURL_TIMEOUT_OPTS[@]}" -fsS https://starship.rs/install.sh | sh -s -- -y
 }
 
 install_mise() {
@@ -189,7 +193,7 @@ install_mise() {
   fi
 
   log 'installing mise via the official installer.'
-  curl https://mise.jdx.dev/install.sh | sh
+  curl "${CURL_TIMEOUT_OPTS[@]}" -fsSL https://mise.jdx.dev/install.sh | sh
 }
 
 install_gh() {
@@ -204,7 +208,7 @@ install_gh() {
   if [ ! -f "$sources_file" ]; then
     log 'configuring the official GitHub CLI apt repository.'
     sudo mkdir -p -m 755 /etc/apt/keyrings
-    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee "$keyring" >/dev/null
+    curl "${CURL_TIMEOUT_OPTS[@]}" -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo tee "$keyring" >/dev/null
     sudo chmod go+r "$keyring"
     echo "deb [arch=$(dpkg --print-architecture) signed-by=$keyring] https://cli.github.com/packages stable main" \
       | sudo tee "$sources_file" >/dev/null
@@ -235,7 +239,7 @@ install_glab() {
   fi
 
   deb_path=$(mktemp --suffix=.deb)
-  curl -fsSL "$download_url" -o "$deb_path"
+  curl "${CURL_TIMEOUT_OPTS[@]}" -fsSL "$download_url" -o "$deb_path"
   sudo dpkg -i "$deb_path"
   rm -f "$deb_path"
 }
@@ -250,7 +254,8 @@ install_zsh_history_substring_search() {
 
   log 'zsh-history-substring-search is not packaged for Debian; cloning the upstream repo.'
   mkdir -p "$(dirname "$plugin_dir")"
-  git clone --depth 1 https://github.com/zsh-users/zsh-history-substring-search "$plugin_dir"
+  git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=15 \
+    clone --depth 1 https://github.com/zsh-users/zsh-history-substring-search "$plugin_dir"
 }
 
 install_docker() {
@@ -264,7 +269,7 @@ install_docker() {
 
   log 'configuring the official Docker apt repository.'
   sudo install -m 0755 -d /etc/apt/keyrings
-  sudo curl -fsSL https://download.docker.com/linux/debian/gpg -o "$keyring"
+  sudo curl "${CURL_TIMEOUT_OPTS[@]}" -fsSL https://download.docker.com/linux/debian/gpg -o "$keyring"
   sudo chmod a+r "$keyring"
   {
     printf 'Types: deb\n'
@@ -290,7 +295,7 @@ install_ghostty() {
   fi
 
   log 'ghostty has no official Debian package; running the community-maintained installer (mkasberg/ghostty-ubuntu, not signed by Ghostty upstream).'
-  /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/mkasberg/ghostty-ubuntu/HEAD/install.sh)"
+  /bin/bash -c "$(curl "${CURL_TIMEOUT_OPTS[@]}" -fsSL https://raw.githubusercontent.com/mkasberg/ghostty-ubuntu/HEAD/install.sh)"
 }
 
 install_nerd_font() {
@@ -305,7 +310,7 @@ install_nerd_font() {
   log 'downloading JetBrains Mono Nerd Font.'
   local archive_path
   archive_path=$(mktemp --suffix=.tar.xz)
-  curl -fLo "$archive_path" https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.tar.xz
+  curl "${CURL_TIMEOUT_OPTS[@]}" -fLo "$archive_path" https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.tar.xz
   mkdir -p "$font_dir"
   tar -xf "$archive_path" -C "$font_dir"
   rm -f "$archive_path"
