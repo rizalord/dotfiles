@@ -25,12 +25,17 @@ run() {
 
 require_command() {
   local command_name="$1"
+  local install_hint='with Homebrew'
 
   if command -v "$command_name" >/dev/null 2>&1; then
     return
   fi
 
-  printf 'missing prerequisite: %s. Install it with Homebrew (or make it available in PATH), then rerun this script.\n' "$command_name" >&2
+  if [ "$(uname -s)" != Darwin ]; then
+    install_hint='via apt (scripts/install-apt.sh)'
+  fi
+
+  printf 'missing prerequisite: %s. Install it %s (or make it available in PATH), then rerun this script.\n' "$command_name" "$install_hint" >&2
   return 1
 }
 
