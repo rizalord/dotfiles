@@ -76,6 +76,7 @@ assert_contains "$DRY_OUTPUT" 'docker buildx version'
 assert_contains "$DRY_OUTPUT" 'NPM_CONFIG_PREFIX='
 assert_contains "$DRY_OUTPUT" '@openai/codex'
 assert_contains "$DRY_OUTPUT" '@anthropic-ai/claude-code'
+assert_contains "$DRY_OUTPUT" 'opencode-ai@latest'
 assert_contains "$DRY_OUTPUT" 'mise use --global node@lts'
 assert_contains "$DRY_OUTPUT" 'mise exec -- npm --version'
 test ! -e "$DRY_HOME/.local"
@@ -90,20 +91,23 @@ assert_contains "$(<"$INVALID_OUTPUT")" 'Usage: install-tools.sh [--dry-run] [--
 SKIP_HOME="$TMP_ROOT/skip-home"
 SKIP_BIN="$TMP_ROOT/skip-bin"
 mkdir -p "$SKIP_HOME" "$SKIP_BIN"
-for command_name in mise colima docker gh glab codex claude; do
+for command_name in mise colima docker gh glab codex claude opencode; do
   write_fake "$SKIP_BIN" "$command_name" 'exit 0'
 done
 SKIP_OUTPUT=$(HOME="$SKIP_HOME" PATH="$SKIP_BIN:/usr/bin:/bin" \
   bash "$INSTALLER" --dry-run --skip-brew 2>&1)
 assert_contains "$SKIP_OUTPUT" 'codex already available; @openai/codex installation is skipped.'
 assert_contains "$SKIP_OUTPUT" 'claude already available; @anthropic-ai/claude-code installation is skipped.'
+assert_contains "$SKIP_OUTPUT" 'opencode already available; opencode-ai installation is skipped.'
 assert_not_contains "$SKIP_OUTPUT" 'npm install --global @openai/codex'
 assert_not_contains "$SKIP_OUTPUT" 'npm install --global @anthropic-ai/claude-code'
+assert_not_contains "$SKIP_OUTPUT" 'npm install --global opencode-ai'
 SKIP_OUTPUT=$(HOME="$SKIP_HOME" PATH="$SKIP_BIN:/usr/bin:/bin" \
   bash "$INSTALLER" --skip-brew 2>&1)
 assert_contains "$SKIP_OUTPUT" 'Docker CLI plugin config skipped: Homebrew unavailable with --skip-brew.'
 assert_contains "$SKIP_OUTPUT" 'codex already available; npm package installation is skipped.'
 assert_contains "$SKIP_OUTPUT" 'claude already available; npm package installation is skipped.'
+assert_contains "$SKIP_OUTPUT" 'opencode already available; npm package installation is skipped.'
 
 # Non-dry-run AI installation must use mise's environment for npm. An ambient
 # npm executable is supplied only to prove it is never called.
@@ -125,6 +129,7 @@ assert_contains "$(<"$TOOL_LOG")" 'mise use --global node@lts'
 assert_contains "$(<"$TOOL_LOG")" 'mise exec -- npm --version'
 assert_contains "$(<"$TOOL_LOG")" 'mise exec -- npm install --global @openai/codex'
 assert_contains "$(<"$TOOL_LOG")" 'mise exec -- npm install --global @anthropic-ai/claude-code'
+assert_contains "$(<"$TOOL_LOG")" 'mise exec -- npm install --global opencode-ai@latest'
 assert_contains "$(<"$TOOL_LOG")" "NPM_CONFIG_PREFIX=$AI_HOME/.local"
 assert_contains "$(<"$TOOL_LOG")" "PATH=$AI_HOME/.local/bin:$AI_BIN:$AMBIENT_BIN:/usr/bin:/bin"
 assert_not_contains "$(<"$TOOL_LOG")" 'ambient npm was called'
@@ -150,7 +155,7 @@ for platform in Darwin Linux; do
     PLATFORM_BREW_PREFIX=''
     write_fake "$PLATFORM_BIN" brew 'printf "brew %s\n" "$*" >> "$PLATFORM_LOG"'
   fi
-  for command_name in mise colima docker gh glab codex claude; do
+  for command_name in mise colima docker gh glab codex claude opencode; do
     write_fake "$PLATFORM_BIN" "$command_name" 'exit 0'
   done
   PLATFORM_OUTPUT=$(HOME="$PLATFORM_HOME" PLATFORM_LOG="$PLATFORM_LOG" \
@@ -178,7 +183,7 @@ if [ -n "$JQ_BIN" ]; then
   write_fake "$MAC_HELPER_BIN" uname 'printf "Darwin\n"'
   write_fake "$MAC_HELPER_BIN" brew 'if [ "${1:-}" = --prefix ]; then printf "brew --prefix\n" >> "$BREW_LOG"; printf "%s\n" "$BREW_PREFIX"; else printf "brew %s\n" "$*" >> "$BREW_LOG"; fi'
   write_fake "$MAC_HELPER_BIN" docker 'if [ "${1:-}" = buildx ] && [ "${2:-}" = version ]; then printf "github.com/docker/buildx v0.0.0\n"; elif [ "${1:-}" = compose ] && [ "${2:-}" = version ]; then printf "Docker Compose version v0.0.0\n"; else exit 1; fi'
-  for command_name in mise colima gh glab codex claude; do
+  for command_name in mise colima gh glab codex claude opencode; do
     write_fake "$MAC_HELPER_BIN" "$command_name" 'exit 0'
   done
 
@@ -305,7 +310,7 @@ EOF
   MAC_MISSING_BREW_BIN="$TMP_ROOT/mac-missing-brew-bin"
   mkdir -p "$MAC_MISSING_BREW_BIN"
   write_fake "$MAC_MISSING_BREW_BIN" uname 'printf "Darwin\n"'
-  for command_name in mise colima docker gh glab codex claude; do
+  for command_name in mise colima docker gh glab codex claude opencode; do
     write_fake "$MAC_MISSING_BREW_BIN" "$command_name" 'exit 0'
   done
   MAC_MISSING_BREW_OUTPUT="$TMP_ROOT/mac-missing-brew-output"
@@ -323,7 +328,7 @@ EOF
   write_fake "$MAC_MISSING_JQ_BIN" uname 'printf "Darwin\n"'
   write_fake "$MAC_MISSING_JQ_BIN" brew 'if [ "${1:-}" = --prefix ]; then printf "%s\n" "$BREW_PREFIX"; fi'
   write_fake "$MAC_MISSING_JQ_BIN" docker 'if [ "${1:-}" = buildx ] && [ "${2:-}" = version ]; then exit 0; elif [ "${1:-}" = compose ] && [ "${2:-}" = version ]; then exit 0; else exit 1; fi'
-  for command_name in mise colima gh glab codex claude; do
+  for command_name in mise colima gh glab codex claude opencode; do
     write_fake "$MAC_MISSING_JQ_BIN" "$command_name" 'exit 0'
   done
   MAC_MISSING_JQ_OUTPUT="$TMP_ROOT/mac-missing-jq-output"
@@ -484,7 +489,7 @@ DOCKER_INSTALL_BIN="$TMP_ROOT/docker-install-bin"
 DOCKER_INSTALL_LOG="$TMP_ROOT/docker-install.log"
 mkdir -p "$DOCKER_INSTALL_HOME" "$DOCKER_INSTALL_BIN"
 write_fake "$DOCKER_INSTALL_BIN" uname 'printf "Linux\n"'
-for command_name in mise colima gh glab codex claude; do
+for command_name in mise colima gh glab codex claude opencode; do
   write_fake "$DOCKER_INSTALL_BIN" "$command_name" 'exit 0'
 done
 write_fake "$DOCKER_INSTALL_BIN" docker 'printf "%s\n" "$*" >> "$DOCKER_INSTALL_LOG"; if [ "${1:-}" = buildx ] && [ "${2:-}" = version ]; then printf "buildx ok\n"; elif [ "${1:-}" = compose ] && [ "${2:-}" = version ]; then printf "compose ok\n"; else exit 1; fi'
@@ -498,7 +503,7 @@ DOCKER_BUILDx_MISSING_BIN="$TMP_ROOT/docker-buildx-missing-bin"
 DOCKER_BUILDx_MISSING_HOME="$TMP_ROOT/docker-buildx-missing-home"
 mkdir -p "$DOCKER_BUILDx_MISSING_BIN" "$DOCKER_BUILDx_MISSING_HOME"
 write_fake "$DOCKER_BUILDx_MISSING_BIN" uname 'printf "Linux\n"'
-for command_name in mise colima gh glab codex claude; do
+for command_name in mise colima gh glab codex claude opencode; do
   write_fake "$DOCKER_BUILDx_MISSING_BIN" "$command_name" 'exit 0'
 done
 write_fake "$DOCKER_BUILDx_MISSING_BIN" docker 'if [ "${1:-}" = compose ] && [ "${2:-}" = version ]; then printf "compose ok\n"; else exit 1; fi'
@@ -511,7 +516,7 @@ DOCKER_COMPOSE_MISSING_BIN="$TMP_ROOT/docker-compose-missing-bin"
 DOCKER_COMPOSE_MISSING_HOME="$TMP_ROOT/docker-compose-missing-home"
 mkdir -p "$DOCKER_COMPOSE_MISSING_BIN" "$DOCKER_COMPOSE_MISSING_HOME"
 write_fake "$DOCKER_COMPOSE_MISSING_BIN" uname 'printf "Linux\n"'
-for command_name in mise colima gh glab codex claude; do
+for command_name in mise colima gh glab codex claude opencode; do
   write_fake "$DOCKER_COMPOSE_MISSING_BIN" "$command_name" 'exit 0'
 done
 write_fake "$DOCKER_COMPOSE_MISSING_BIN" docker 'if [ "${1:-}" = buildx ] && [ "${2:-}" = version ]; then printf "buildx ok\n"; else exit 1; fi'

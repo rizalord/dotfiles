@@ -90,8 +90,8 @@ exec zsh -l
   never installs software, logs in anywhere, or touches the network.
 - `scripts/install-tools.sh` runs `brew bundle` against the [`Brewfile`](Brewfile),
   sets up Node through `mise`, and configures the Docker CLI plugins. It
-  installs the optional Codex / Claude Code CLIs only if they are missing and
-  never signs in to anything.
+  installs the optional Codex / Claude Code / opencode CLIs only if they are
+  missing and never signs in to anything.
 - Step 5 matters because the installer runs in a child process — it cannot
   change your current shell's `PATH`. A new login shell re-reads the config
   and sees the tools.
@@ -180,6 +180,7 @@ gh auth login
 glab auth login
 codex login
 claude login
+opencode auth login
 ```
 
 Tokens stay in each tool's own credential store.
