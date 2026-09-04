@@ -92,13 +92,24 @@ if (( $+commands[fastfetch] )) && [[ -t 1 && $SHLVL -eq 1 && -z $DOTFILES_NO_FAS
   fastfetch
 fi
 
-# Interactive plugins, installed via Homebrew and skipped when absent.
-_zsh_plugin_dir="${HOMEBREW_PREFIX:-/opt/homebrew}/share"
+# Interactive plugins, installed via Homebrew (macOS) or apt (Debian) and
+# skipped when absent. zsh-history-substring-search isn't packaged for
+# Debian, so it also looks in the git-clone location install-apt.sh uses.
+_zsh_plugin_dirs=("${HOMEBREW_PREFIX:-/opt/homebrew}/share" /usr/share)
+_source_zsh_plugin() {
+  local plugin_name="$1" plugin_file="$2" dir
+  for dir in "${_zsh_plugin_dirs[@]}" "${XDG_DATA_HOME:-$HOME/.local/share}/zsh-plugins"; do
+    if [[ -r "$dir/$plugin_name/$plugin_file" ]]; then
+      source "$dir/$plugin_name/$plugin_file"
+      return 0
+    fi
+  done
+  return 1
+}
+
 ZSH_AUTOSUGGEST_STRATEGY=(history completion)
 ZSH_AUTOSUGGEST_MANUAL_REBIND=1
-if [[ -r "$_zsh_plugin_dir/zsh-autosuggestions/zsh-autosuggestions.zsh" ]]; then
-  source "$_zsh_plugin_dir/zsh-autosuggestions/zsh-autosuggestions.zsh"
-fi
+_source_zsh_plugin zsh-autosuggestions zsh-autosuggestions.zsh
 
 local_zsh="$XDG_CONFIG_HOME/zsh/local.zsh"
 [[ -n "$XDG_CONFIG_HOME" ]] || local_zsh="$HOME/.config/zsh/local.zsh"
@@ -106,14 +117,12 @@ local_zsh="$XDG_CONFIG_HOME/zsh/local.zsh"
 unset local_zsh
 
 # zsh-syntax-highlighting must be sourced last; history-substring-search after it.
-if [[ -r "$_zsh_plugin_dir/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh" ]]; then
-  source "$_zsh_plugin_dir/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh"
-fi
-if [[ -r "$_zsh_plugin_dir/zsh-history-substring-search/zsh-history-substring-search.zsh" ]]; then
-  source "$_zsh_plugin_dir/zsh-history-substring-search/zsh-history-substring-search.zsh"
+_source_zsh_plugin zsh-syntax-highlighting zsh-syntax-highlighting.zsh
+if _source_zsh_plugin zsh-history-substring-search zsh-history-substring-search.zsh; then
   bindkey '^[[A' history-substring-search-up
   bindkey '^[[B' history-substring-search-down
   bindkey '^P'   history-substring-search-up
   bindkey '^N'   history-substring-search-down
 fi
-unset _zsh_plugin_dir
+unset -f _source_zsh_plugin
+unset _zsh_plugin_dirs
