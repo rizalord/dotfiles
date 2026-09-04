@@ -271,13 +271,15 @@ export PATH="$NPM_CONFIG_PREFIX/bin:$PATH"
 log "NPM_CONFIG_PREFIX=$NPM_CONFIG_PREFIX"
 
 missing_ai_cli=false
-for ai_cli in codex claude; do
+for ai_cli in codex claude opencode; do
   if command -v "$ai_cli" >/dev/null 2>&1; then
     if [ "$DRY_RUN" = true ]; then
       if [ "$ai_cli" = codex ]; then
         log 'codex already available; @openai/codex installation is skipped.'
-      else
+      elif [ "$ai_cli" = claude ]; then
         log 'claude already available; @anthropic-ai/claude-code installation is skipped.'
+      else
+        log 'opencode already available; opencode-ai installation is skipped.'
       fi
     else
       log "$ai_cli already available; npm package installation is skipped."
@@ -313,4 +315,10 @@ if command -v claude >/dev/null 2>&1; then
   log 'claude already available; @anthropic-ai/claude-code installation is skipped.'
 else
   run mise exec -- npm install --global @anthropic-ai/claude-code
+fi
+
+if command -v opencode >/dev/null 2>&1; then
+  log 'opencode already available; opencode-ai installation is skipped.'
+else
+  run mise exec -- npm install --global opencode-ai@latest
 fi
