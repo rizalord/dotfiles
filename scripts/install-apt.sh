@@ -54,6 +54,19 @@ github_latest_asset_url() {
     | head -n1
 }
 
+# glab's GitHub mirror (gitlabhq/cli) carries no Release assets -- only
+# GitLab's own release page does. Use GitLab's public REST API instead.
+gitlab_latest_asset_url() {
+  local project_path="$1"
+  local asset_pattern="$2"
+  local encoded_path="${project_path//\//%2F}"
+
+  curl -fsSL "https://gitlab.com/api/v4/projects/$encoded_path/releases/permalink/latest" \
+    | jq -r --arg pattern "$asset_pattern" \
+      '.assets.links[] | select(.name | test($pattern)) | .direct_asset_url' \
+    | head -n1
+}
+
 install_apt_packages() {
   local package_name
   local missing_packages=()
@@ -143,7 +156,7 @@ install_git_delta() {
   fi
 
   log 'git-delta not available via apt; downloading the official .deb from dandavison/delta releases.'
-  download_url=$(github_latest_asset_url dandavison/delta "_${arch}.deb")
+  download_url=$(github_latest_asset_url dandavison/delta "^git-delta_[^-]+_${arch}\\.deb\$")
   if [ -z "$download_url" ]; then
     printf 'git-delta: could not find a GitHub release .deb for arch %s; install it manually.\n' "$arch" >&2
     return 1
@@ -210,14 +223,14 @@ install_glab() {
   local arch download_url deb_path
   arch=$(detect_arch)
   if [ "$arch" = unsupported ]; then
-    printf 'glab: no known GitHub release asset for this arch; install it manually.\n' >&2
+    printf 'glab: no known release asset for this arch; install it manually.\n' >&2
     return 1
   fi
 
-  log 'glab has no official apt repository; downloading the official .deb from gitlab-org/cli releases.'
-  download_url=$(github_latest_asset_url gitlab-org/cli "_${arch}.deb")
+  log 'glab has no official apt repository; downloading the official .deb from gitlab.com/gitlab-org/cli releases.'
+  download_url=$(gitlab_latest_asset_url gitlab-org/cli "linux_${arch}\\.deb\$")
   if [ -z "$download_url" ]; then
-    printf 'glab: could not find a GitHub release .deb for arch %s; install it manually.\n' "$arch" >&2
+    printf 'glab: could not find a release .deb for arch %s; install it manually.\n' "$arch" >&2
     return 1
   fi
 

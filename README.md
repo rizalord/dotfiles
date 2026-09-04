@@ -95,9 +95,10 @@ transparent about *where* each tool comes from, in the same spirit as
 - **Official apt repo added by the script**: `gh` (cli.github.com) and Docker
   Engine (docs.docker.com) — both add a signed apt source the same way their
   own docs do.
-- **Official GitHub Release, no apt repo exists**: `glab` — GitLab doesn't
-  publish an apt repo, so the script fetches the `.deb` from `gitlab-org/cli`'s
-  own releases.
+- **Official release, no apt repo exists**: `glab` — GitLab doesn't publish
+  an apt repo, and its GitHub mirror carries no Release assets either, so the
+  script fetches the `.deb` straight from GitLab's own release API
+  (`gitlab.com/gitlab-org/cli`).
 - **Not packaged for Debian at all**: `zsh-history-substring-search` is
   `git clone`d once from the upstream `zsh-users` repo (never auto-updated).
 - **Community-maintained, not signed by upstream**: **Ghostty** has no
