@@ -239,26 +239,42 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ "$SKIP_BREW" = false ]; then
-  if [ "$(uname -s)" = Darwin ]; then
-    if command -v brew >/dev/null 2>&1; then
-      run brew bundle "--file=$ROOT_DIR/Brewfile"
-    else
-      printf 'missing prerequisite: Homebrew. Install Homebrew, or rerun with --skip-brew if you manage tools separately.\n' >&2
-      exit 1
-    fi
-  else
-    log 'Homebrew bundle skipped: this installer only uses Brewfile on macOS.'
-  fi
+  case "$(uname -s)" in
+    Darwin)
+      if command -v brew >/dev/null 2>&1; then
+        run brew bundle "--file=$ROOT_DIR/Brewfile"
+      else
+        printf 'missing prerequisite: Homebrew. Install Homebrew, or rerun with --skip-brew if you manage tools separately.\n' >&2
+        exit 1
+      fi
+      ;;
+    Linux)
+      if command -v apt-get >/dev/null 2>&1; then
+        run "$ROOT_DIR/scripts/install-apt.sh"
+      else
+        log 'Package installation skipped: this installer only supports apt-based Linux.'
+      fi
+      ;;
+    *)
+      log 'Package installation skipped: unsupported OS.'
+      ;;
+  esac
 else
   log 'Homebrew bundle skipped by --skip-brew.'
 fi
 
+if [ "$(uname -s)" = Darwin ]; then
+  required_tools=(mise colima docker gh glab)
+else
+  required_tools=(mise docker gh glab)
+fi
+
 if [ "$DRY_RUN" = false ]; then
-  for required_tool in mise colima docker gh glab; do
+  for required_tool in "${required_tools[@]}"; do
     require_command "$required_tool"
   done
 else
-  for required_tool in mise colima docker gh glab; do
+  for required_tool in "${required_tools[@]}"; do
     log "dry-run: would verify prerequisite: $required_tool"
   done
 fi

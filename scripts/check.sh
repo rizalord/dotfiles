@@ -96,6 +96,7 @@ check_file "$ROOT_DIR/ghostty/config"
 check_file "$ROOT_DIR/fastfetch/config.jsonc"
 check_file "$ROOT_DIR/ssh/config"
 check_file "$ROOT_DIR/scripts/macos-defaults.sh"
+check_file "$ROOT_DIR/scripts/install-apt.sh"
 check_file "$ROOT_DIR/.github/workflows/ci.yml"
 
 for formula in gh glab mise colima docker docker-buildx docker-compose; do

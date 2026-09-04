@@ -2,8 +2,9 @@
 
 [![CI](https://github.com/rizalord/dotfiles/actions/workflows/ci.yml/badge.svg)](https://github.com/rizalord/dotfiles/actions/workflows/ci.yml)
 
-Portable, macOS-first configuration for **zsh**, **Git**, a modern terminal, a
-set of developer CLIs, and a Colima-backed Docker workflow.
+Portable configuration for **zsh**, **Git**, a modern terminal, a set of
+developer CLIs, and a Docker workflow — for macOS (Colima-backed) and Debian
+Linux (native Docker Engine).
 
 The guiding rule: **shared configuration lives in this repository; secrets,
 your Git identity, and machine-specific settings never do.** A small install
@@ -16,6 +17,7 @@ before.
 
 - [What you get](#what-you-get)
 - [Requirements](#requirements)
+- [Debian/Linux notes](#debianlinux-notes)
 - [Install](#install)
 - [What the installer links](#what-the-installer-links)
 - [First-run setup (SSH, Git identity, sign-in)](#first-run-setup)
@@ -39,7 +41,7 @@ before.
 | **Shell** | autosuggestions, syntax highlighting, history-substring search, cached completion, `fzf` bindings |
 | **Listing / paging** | `eza` aliases, `bat` man pages, `delta` for Git diffs |
 | **Runtimes** | [`mise`](https://mise.jdx.dev) for Node/other languages — no global Homebrew Node |
-| **Containers** | Colima + the Docker CLI (Buildx and Compose plugins wired up) |
+| **Containers** | Docker CLI with Buildx and Compose wired up — via Colima on macOS, native Docker Engine on Debian |
 | **Greeting** | `fastfetch` system summary on a new terminal (toggleable) |
 | **Safety** | idempotent installer, timestamped backups, secret/path scanner, CI on every push |
 
@@ -50,14 +52,62 @@ Everything is plain files and a POSIX shell script. No dotfile framework
 
 ## Requirements
 
-- **macOS** (Apple Silicon or Intel). The shell and Git parts also work on
-  Linux, but the Homebrew bundle and Docker setup are macOS-only.
-- **Git** and **zsh** (zsh ships with modern macOS).
-- **[Homebrew](https://brew.sh)** — install it first if you do not have it:
+Two supported platforms, each with its own package manager — pick the one
+that matches your machine:
+
+- **macOS** (Apple Silicon or Intel), via **[Homebrew](https://brew.sh)**:
 
   ```sh
   /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
   ```
+
+- **Debian** 12 (bookworm) or 13 (trixie), via **apt**. Nothing extra to
+  install first — `scripts/install-tools.sh` drives `apt-get` itself (with
+  `sudo`). See [Debian/Linux notes](#debianlinux-notes) for what that
+  involves and where a couple of tools fall back to the vendor's own
+  installer instead of a plain apt package.
+
+Either way you also need **Git** and **zsh** (both are already present on a
+default install of either OS).
+
+---
+
+## Debian/Linux notes
+
+[`scripts/install-apt.sh`](scripts/install-apt.sh) is what
+`scripts/install-tools.sh` runs on Debian instead of `brew bundle`. It's
+idempotent (skips anything already on your `PATH`) and, like the Homebrew
+path, installs software automatically — no separate confirmation step. Being
+transparent about *where* each tool comes from, in the same spirit as
+[How it stays safe](#how-it-stays-safe):
+
+- **Plain apt packages**: `bat`, `fd`, `fzf`, `jq`, `ripgrep`, `shellcheck`,
+  `zoxide`, `zsh-autosuggestions`, `zsh-syntax-highlighting`. (Debian names
+  `bat`/`fd`'s binaries `batcat`/`fdfind`; the script symlinks the familiar
+  names into `~/.local/bin`.)
+- **Apt first, official GitHub Release as fallback**: `eza` and `git-delta`
+  aren't in Debian 12's apt repo yet (they are in 13). If apt doesn't have
+  them, the script downloads the binary/`.deb` straight from the project's
+  own GitHub Releases — never a third-party apt repo.
+- **Official vendor install script**: `mise` and `starship` (when apt lacks
+  the latter) come from `mise.jdx.dev`/`starship.rs`'s own first-party
+  installer scripts.
+- **Official apt repo added by the script**: `gh` (cli.github.com) and Docker
+  Engine (docs.docker.com) — both add a signed apt source the same way their
+  own docs do.
+- **Official GitHub Release, no apt repo exists**: `glab` — GitLab doesn't
+  publish an apt repo, so the script fetches the `.deb` from `gitlab-org/cli`'s
+  own releases.
+- **Not packaged for Debian at all**: `zsh-history-substring-search` is
+  `git clone`d once from the upstream `zsh-users` repo (never auto-updated).
+- **Community-maintained, not signed by upstream**: **Ghostty** has no
+  official Debian package, so the script runs the well-known
+  `mkasberg/ghostty-ubuntu` installer. This is the one step that isn't from
+  the tool's own maintainers — worth knowing before you run it.
+
+Docker Engine on Debian runs natively (no Colima); the script adds your user
+to the `docker` group, so log out and back in (or run `newgrp docker`) once
+before using `docker` without `sudo`.
 
 ---
 
@@ -74,7 +124,7 @@ cd "$HOME/src/dotfiles"
 # 3. Create the symlinks (existing files are backed up first)
 ./install.sh
 
-# 4. Install the CLI tools and apps via Homebrew
+# 4. Install the CLI tools and apps (Homebrew on macOS, apt on Debian)
 ./scripts/install-tools.sh
 
 # 5. Start a fresh login shell so the new PATH and plugins load
@@ -88,10 +138,13 @@ exec zsh -l
 
 - `install.sh` only manages symlinks, backups, and one Git `include` line. It
   never installs software, logs in anywhere, or touches the network.
-- `scripts/install-tools.sh` runs `brew bundle` against the [`Brewfile`](Brewfile),
-  sets up Node through `mise`, and configures the Docker CLI plugins. It
-  installs the optional Codex / Claude Code / opencode CLIs only if they are
-  missing and never signs in to anything.
+- `scripts/install-tools.sh` runs `brew bundle` against the
+  [`Brewfile`](Brewfile) on macOS, or
+  [`scripts/install-apt.sh`](scripts/install-apt.sh) on Debian (see
+  [Debian/Linux notes](#debianlinux-notes)). Either way it sets up Node
+  through `mise`, configures the Docker CLI plugins, and installs the
+  optional Codex / Claude Code / opencode CLIs only if they are missing —
+  never signs in to anything.
 - Step 5 matters because the installer runs in a child process — it cannot
   change your current shell's `PATH`. A new login shell re-reads the config
   and sees the tools.
@@ -321,7 +374,11 @@ the `include.path` line from your global Git config.
   one.
 - **CI** runs `shellcheck` and the full test suite on every push and pull
   request.
-- The installer and test runner **never** fetch, push, or authenticate.
+- `install.sh` and the test runner never touch the network or sign in to
+  anything; `scripts/install-tools.sh` does fetch packages (Homebrew/apt and
+  the vendor installers listed in [Debian/Linux notes](#debianlinux-notes)),
+  but it never touches this repo's own Git remotes or logs in to a service on
+  your behalf.
 
 ---
 
@@ -337,7 +394,10 @@ shellcheck install.sh scripts/*.sh tests/*.sh
 - Tests live in [`tests/`](tests) and run against a throwaway `HOME`.
 - [`.github/workflows/ci.yml`](.github/workflows/ci.yml): `shellcheck` on
   `ubuntu-latest`, then `./scripts/test.sh` on `macos-latest` (the suite
-  exercises Homebrew, Docker, and zsh, so it targets macOS).
+  exercises Homebrew, Docker, and zsh, so it targets macOS). The Debian code
+  paths in `install-tools.sh`/`install-apt.sh` are exercised by the same
+  suite through a faked `uname`/`apt-get`/`dpkg`, rather than a real Debian
+  CI runner (GitHub Actions doesn't offer one).
 - [`.shellcheckrc`](.shellcheckrc) documents each repo-wide lint exception.
 
 ### Two-remote workflow

@@ -164,10 +164,67 @@ for platform in Darwin Linux; do
   if [ "$platform" = Darwin ]; then
     assert_contains "$(<"$PLATFORM_LOG")" "brew bundle --file=$ROOT_DIR/Brewfile"
   else
-    assert_contains "$PLATFORM_OUTPUT" 'Homebrew bundle skipped: this installer only uses Brewfile on macOS.'
+    # The real test host's apt-get (absent on macOS, where this suite runs)
+    # decides which Linux skip message applies here.
+    assert_contains "$PLATFORM_OUTPUT" 'Package installation skipped: this installer only supports apt-based Linux.'
     test ! -e "$PLATFORM_LOG"
   fi
 done
+
+# colima is only a required prerequisite on Darwin; Linux uses native Docker
+# and must not demand it.
+REQ_TOOLS_HOME="$TMP_ROOT/req-tools-home"
+REQ_TOOLS_BIN="$TMP_ROOT/req-tools-bin"
+mkdir -p "$REQ_TOOLS_HOME" "$REQ_TOOLS_BIN"
+for command_name in mise docker gh glab codex claude opencode; do
+  write_fake "$REQ_TOOLS_BIN" "$command_name" 'exit 0'
+done
+write_fake "$REQ_TOOLS_BIN" uname 'printf "Linux\n"'
+REQ_TOOLS_LINUX_OUTPUT="$TMP_ROOT/req-tools-linux-output"
+env HOME="$REQ_TOOLS_HOME" PATH="$REQ_TOOLS_BIN:/usr/bin:/bin" \
+  bash "$INSTALLER" --skip-brew >"$REQ_TOOLS_LINUX_OUTPUT" 2>&1
+assert_not_contains "$(<"$REQ_TOOLS_LINUX_OUTPUT")" 'colima'
+
+write_fake "$REQ_TOOLS_BIN" uname 'printf "Darwin\n"'
+REQ_TOOLS_DARWIN_OUTPUT="$TMP_ROOT/req-tools-darwin-output"
+expect_failure "$REQ_TOOLS_DARWIN_OUTPUT" env HOME="$REQ_TOOLS_HOME" \
+  PATH="$REQ_TOOLS_BIN:/usr/bin:/bin" bash "$INSTALLER" --skip-brew
+assert_contains "$(<"$REQ_TOOLS_DARWIN_OUTPUT")" 'missing prerequisite: colima'
+
+# On Linux with apt-get present, install-tools.sh dispatches to
+# scripts/install-apt.sh. With every tool install-apt.sh checks for already
+# reported present, the whole run must be a no-op: no apt-get, sudo, curl,
+# git, tar, wget, fc-cache, tee, or usermod invocation, just skip messages.
+APT_DISPATCH_HOME="$TMP_ROOT/apt-dispatch-home"
+APT_DISPATCH_BIN="$TMP_ROOT/apt-dispatch-bin"
+APT_DISPATCH_UNEXPECTED_LOG="$TMP_ROOT/apt-dispatch-unexpected.log"
+mkdir -p "$APT_DISPATCH_HOME" "$APT_DISPATCH_BIN"
+: >"$APT_DISPATCH_UNEXPECTED_LOG"
+write_fake "$APT_DISPATCH_BIN" uname 'printf "Linux\n"'
+write_fake "$APT_DISPATCH_BIN" dpkg 'case "${1:-}" in -s) exit 0 ;; --print-architecture) printf "amd64\n" ;; *) exit 0 ;; esac'
+for command_name in sudo curl apt-get git tar fc-cache wget tee usermod; do
+  write_fake "$APT_DISPATCH_BIN" "$command_name" \
+    "printf '%s %s\n' \"\$(basename \"\$0\")\" \"\$*\" >> '$APT_DISPATCH_UNEXPECTED_LOG'; exit 0"
+done
+for command_name in eza delta starship mise gh glab docker ghostty codex claude opencode; do
+  write_fake "$APT_DISPATCH_BIN" "$command_name" 'exit 0'
+done
+mkdir -p "$APT_DISPATCH_HOME/.local/share/zsh-plugins/zsh-history-substring-search"
+mkdir -p "$APT_DISPATCH_HOME/.local/share/fonts/JetBrainsMonoNerdFont"
+touch "$APT_DISPATCH_HOME/.local/share/fonts/JetBrainsMonoNerdFont/.installed"
+APT_DISPATCH_OUTPUT=$(HOME="$APT_DISPATCH_HOME" PATH="$APT_DISPATCH_BIN:/usr/bin:/bin" \
+  bash "$INSTALLER" 2>&1)
+assert_contains "$APT_DISPATCH_OUTPUT" 'eza already available'
+assert_contains "$APT_DISPATCH_OUTPUT" 'git-delta already available'
+assert_contains "$APT_DISPATCH_OUTPUT" 'starship already available'
+assert_contains "$APT_DISPATCH_OUTPUT" 'mise already available'
+assert_contains "$APT_DISPATCH_OUTPUT" 'gh already available'
+assert_contains "$APT_DISPATCH_OUTPUT" 'glab already available'
+assert_contains "$APT_DISPATCH_OUTPUT" 'already cloned'
+assert_contains "$APT_DISPATCH_OUTPUT" 'docker already available'
+assert_contains "$APT_DISPATCH_OUTPUT" 'ghostty already available'
+assert_contains "$APT_DISPATCH_OUTPUT" 'Nerd Font already installed'
+test ! -s "$APT_DISPATCH_UNEXPECTED_LOG"
 
 # The macOS Docker CLI plugin helper must be isolated from the user's Homebrew,
 # HOME, and Docker config. It discovers the prefix, writes valid JSON safely,
