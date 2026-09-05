@@ -287,8 +287,11 @@ fi
 configure_docker_cli_plugins
 verify_docker_cli_plugins
 
-log 'installing Node and Bun via mise.'
-run mise use --global node@latest bun@latest
+log 'installing Node, Bun, PHP and Composer via mise.'
+# NOTE: mise's php plugin builds PHP from source and installs Composer as
+# $install/bin/composer automatically, so a single php@latest entry provides
+# both `php` and `composer` (COMPOSER_HOME lives under the php install dir).
+run mise use --global node@latest bun@latest php@latest
 
 export NPM_CONFIG_PREFIX="$HOME/.local"
 export PATH="$NPM_CONFIG_PREFIX/bin:$PATH"

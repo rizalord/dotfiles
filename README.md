@@ -41,7 +41,7 @@ before.
 | **Prompt** | [Starship](https://starship.rs) — directory, Git state, runtime versions, command duration |
 | **Shell** | autosuggestions, syntax highlighting, history-substring search, cached completion, `fzf` bindings |
 | **Listing / paging** | `eza` aliases, `bat` man pages, `delta` for Git diffs |
-| **Runtimes** | [`mise`](https://mise.jdx.dev) pins Node and [Bun](https://bun.sh) (both `latest`) globally, and manages other languages too — no global Homebrew Node |
+| **Runtimes** | [`mise`](https://mise.jdx.dev) pins Node, [Bun](https://bun.sh), and PHP (all `latest`) globally — PHP's mise plugin also installs [Composer](https://getcomposer.org) as `composer` — no global Homebrew Node |
 | **Containers** | Docker CLI with Buildx and Compose wired up — via Colima on macOS, native Docker Engine on Ubuntu |
 | **Greeting** | `fastfetch` system summary on a new terminal (toggleable) |
 | **Safety** | idempotent installer, timestamped backups, secret/path scanner, CI on every push |
@@ -148,8 +148,9 @@ exec zsh -l
 - `scripts/install-tools.sh` runs `brew bundle` against the
   [`Brewfile`](Brewfile) on macOS, or
   [`scripts/install-apt.sh`](scripts/install-apt.sh) on Ubuntu (see
-  [Ubuntu/Linux notes](#ubuntulinux-notes)). Either way it sets up Node and
-  Bun through `mise`, configures the Docker CLI plugins, and installs the
+  [Ubuntu/Linux notes](#ubuntulinux-notes)). Either way it sets up Node, Bun,
+  and PHP through `mise` (PHP's mise plugin also installs Composer as
+  `composer`), configures the Docker CLI plugins, and installs the
   optional Codex / Claude Code / opencode CLIs only if they are missing —
   never signs in to anything.
 - Step 5 only matters on Ubuntu, where the default login shell is `bash`.
@@ -295,11 +296,18 @@ docker compose version
 ```
 
 **Runtimes** are managed by `mise`. `scripts/install-tools.sh` already pins
-Node and Bun globally to `latest`; add another language the same way:
+Node, Bun, and PHP globally to `latest` (PHP's mise plugin compiles PHP from
+source and installs Composer as `composer` alongside it, so `php --version`
+and `composer --version` both work after install); add another language the
+same way:
 
 ```sh
 mise use --global python@latest
 ```
+
+PHP needs its compile-time libraries first — they are already in the
+`Brewfile` (macOS) and `scripts/install-apt.sh` (Ubuntu) — and the first PHP
+build typically takes 5–15 minutes (`make -j`).
 
 ---
 

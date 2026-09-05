@@ -109,6 +109,17 @@ install_core_apt_packages() {
   link_local_bin fd fdfind
 }
 
+# PHP build dependencies for mise (vfox-php compiles PHP from source and
+# installs Composer as bin/composer alongside it). Installed up front so the
+# later `mise use --global php@latest` step in install-tools.sh can compile.
+install_php_build_deps() {
+  install_apt_packages \
+    build-essential autoconf bison re2c pkg-config \
+    libxml2-dev libssl-dev libicu-dev libzip-dev libonig-dev \
+    libcurl4-openssl-dev libpng-dev libjpeg-dev libfreetype6-dev \
+    libwebp-dev libgmp-dev libsodium-dev libreadline-dev libbz2-dev
+}
+
 install_eza() {
   if command -v eza >/dev/null 2>&1; then
     log 'eza already available; installation is skipped.'
@@ -359,6 +370,7 @@ install_nerd_font() {
 }
 
 install_core_apt_packages
+install_php_build_deps
 install_eza
 install_git_delta
 install_fastfetch

@@ -77,7 +77,7 @@ assert_contains "$DRY_OUTPUT" 'NPM_CONFIG_PREFIX='
 assert_contains "$DRY_OUTPUT" '@openai/codex'
 assert_contains "$DRY_OUTPUT" '@anthropic-ai/claude-code'
 assert_contains "$DRY_OUTPUT" 'opencode-ai@latest'
-assert_contains "$DRY_OUTPUT" 'mise use --global node@latest bun@latest'
+assert_contains "$DRY_OUTPUT" 'mise use --global node@latest bun@latest php@latest'
 assert_contains "$DRY_OUTPUT" 'mise exec -- npm --version'
 test ! -e "$DRY_HOME/.local"
 
@@ -125,7 +125,7 @@ AI_OUTPUT=$(HOME="$AI_HOME" TOOL_LOG="$TOOL_LOG" \
   PATH="$AI_BIN:$AMBIENT_BIN:/usr/bin:/bin" \
   bash "$INSTALLER" --skip-brew 2>&1)
 assert_contains "$AI_OUTPUT" 'NPM_CONFIG_PREFIX='
-assert_contains "$(<"$TOOL_LOG")" 'mise use --global node@latest bun@latest'
+assert_contains "$(<"$TOOL_LOG")" 'mise use --global node@latest bun@latest php@latest'
 assert_contains "$(<"$TOOL_LOG")" 'mise exec -- npm --version'
 assert_contains "$(<"$TOOL_LOG")" 'mise exec -- npm install --global @openai/codex'
 assert_contains "$(<"$TOOL_LOG")" 'mise exec -- npm install --global @anthropic-ai/claude-code'
