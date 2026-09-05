@@ -24,6 +24,7 @@ before.
 - [Living in the shell](#living-in-the-shell)
 - [Local, per-machine overrides](#local-per-machine-overrides)
 - [Optional: macOS system defaults](#optional-macos-system-defaults)
+- [Optional: macOS-style GNOME desktop (Ubuntu)](#optional-macos-style-gnome-desktop-ubuntu)
 - [Updating](#updating)
 - [Undo: restoring from a backup](#undo-restoring-from-a-backup)
 - [How it stays safe](#how-it-stays-safe)
@@ -329,6 +330,32 @@ screenshots in `~/Screenshots`, and a faster auto-hiding Dock.
 
 It refuses to run off macOS, and every setting is reversible with
 `defaults delete` or the matching System Settings toggle.
+
+---
+
+## Optional: macOS-style GNOME desktop (Ubuntu)
+
+[`scripts/gnome-macos-theme.sh`](scripts/gnome-macos-theme.sh) is **opt-in** —
+the installer never runs it. It gives Ubuntu's GNOME desktop a macOS-like
+look and feel: the [WhiteSur](https://github.com/vinceliuice/WhiteSur-gtk-theme)
+GTK/icon/cursor themes, the User Themes, Dash to Dock, and Blur my Shell
+GNOME Shell extensions (installed straight from extensions.gnome.org),
+[Ulauncher](https://ulauncher.io) as a Spotlight-like launcher (`Ctrl+Space`
+by default; set it to `Super+Space` in its preferences after first launch),
+and the Inter font as a free SF Pro stand-in. It reads your current
+light/dark preference and applies the matching WhiteSur variant.
+
+```sh
+./scripts/gnome-macos-theme.sh --dry-run   # show what would change
+./scripts/gnome-macos-theme.sh             # apply
+```
+
+It refuses to run without GNOME Shell. Log out and back in afterwards so
+GNOME Shell picks up the new extensions, then confirm all three are enabled
+in the Extensions app. Everything it changes is reversible: `gsettings
+reset-recursively org.gnome.desktop.interface`, disabling/removing the
+extensions in the Extensions app, and deleting
+`~/.local/share/dotfiles-gnome-theme-src`.
 
 ---
 
