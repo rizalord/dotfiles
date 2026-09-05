@@ -11,7 +11,7 @@ log() {
   printf '%s\n' "$*"
 }
 
-# Debian ships these under different binary names; give the tool its
+# Ubuntu ships these under different binary names; give the tool its
 # conventional name in ~/.local/bin without touching the apt-owned binary.
 link_local_bin() {
   local link_name="$1"
@@ -252,7 +252,7 @@ install_zsh_history_substring_search() {
     return
   fi
 
-  log 'zsh-history-substring-search is not packaged for Debian; cloning the upstream repo.'
+  log 'zsh-history-substring-search is not packaged for Ubuntu; cloning the upstream repo.'
   mkdir -p "$(dirname "$plugin_dir")"
   git -c http.lowSpeedLimit=1000 -c http.lowSpeedTime=15 \
     clone --depth 1 https://github.com/zsh-users/zsh-history-substring-search "$plugin_dir"
@@ -269,11 +269,11 @@ install_docker() {
 
   log 'configuring the official Docker apt repository.'
   sudo install -m 0755 -d /etc/apt/keyrings
-  sudo curl "${CURL_TIMEOUT_OPTS[@]}" -fsSL https://download.docker.com/linux/debian/gpg -o "$keyring"
+  sudo curl "${CURL_TIMEOUT_OPTS[@]}" -fsSL https://download.docker.com/linux/ubuntu/gpg -o "$keyring"
   sudo chmod a+r "$keyring"
   {
     printf 'Types: deb\n'
-    printf 'URIs: https://download.docker.com/linux/debian\n'
+    printf 'URIs: https://download.docker.com/linux/ubuntu\n'
     # shellcheck disable=SC1091 # sourcing the live system's os-release, not a repo file
     printf 'Suites: %s\n' "$(. /etc/os-release && echo "$VERSION_CODENAME")"
     printf 'Components: stable\n'
@@ -294,7 +294,7 @@ install_ghostty() {
     return
   fi
 
-  log 'ghostty has no official Debian package; running the community-maintained installer (mkasberg/ghostty-ubuntu, not signed by Ghostty upstream).'
+  log 'ghostty has no official Ubuntu package; running the community-maintained installer (mkasberg/ghostty-ubuntu, not signed by Ghostty upstream).'
   /bin/bash -c "$(curl "${CURL_TIMEOUT_OPTS[@]}" -fsSL https://raw.githubusercontent.com/mkasberg/ghostty-ubuntu/HEAD/install.sh)"
 }
 
