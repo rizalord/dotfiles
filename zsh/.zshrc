@@ -1,5 +1,11 @@
 [[ -o interactive ]] || return
 
+# Not every terminal emulator starts a login shell (unlike macOS Terminal.app
+# and Ghostty on macOS), so .zprofile's PATH setup can't be relied on alone.
+# Redo it here too; typeset -U keeps it a harmless no-op when it already ran.
+typeset -U path PATH
+path=("$HOME/.local/bin" $path)
+
 HISTFILE="${XDG_STATE_HOME:-$HOME/.local/state}/zsh/history"
 HISTSIZE=10000
 SAVEHIST=10000
