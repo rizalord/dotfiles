@@ -65,6 +65,16 @@ ICON_THEME_SRC="$SRC_DIR/WhiteSur-icon-theme"
 CURSOR_THEME_SRC="$SRC_DIR/WhiteSur-cursors"
 GNOME_SHELL_VERSION=$(gnome-shell --version | grep -oE '[0-9]+' | head -n1)
 
+# Ubuntu ships its own dock (ubuntu-dock@ubuntu.com) as a fork of Dash to
+# Dock that reuses its exact GSettings schema, already enabled by default.
+# Installing the vanilla extension alongside it would render two docks, so
+# only install one if nothing already provides this schema.
+if gsettings list-schemas | grep -qx 'org.gnome.shell.extensions.dash-to-dock'; then
+  NEED_VANILLA_DASH_TO_DOCK=false
+else
+  NEED_VANILLA_DASH_TO_DOCK=true
+fi
+
 install_apt_packages() {
   local package_name
   local missing_packages=()
@@ -102,12 +112,42 @@ extension_installed() {
   [ -d "$HOME/.local/share/gnome-shell/extensions/$1" ]
 }
 
+# GNOME Shell only scans ~/.local/share/gnome-shell/extensions for new
+# UUIDs at login; `gnome-extensions enable` talks to the *running* shell and
+# fails with "does not exist" for one installed in the current session. So
+# instead of that, mark it enabled directly in gsettings' string list -
+# GNOME Shell will find it there and turn it on the next time it starts.
+enable_gnome_extension() {
+  local uuid="$1"
+  local current new
+
+  current=$(gsettings get org.gnome.shell enabled-extensions)
+  case "$current" in
+    *"'$uuid'"*)
+      log "$uuid already marked enabled"
+      return
+      ;;
+  esac
+
+  if [ "$current" = '[]' ]; then
+    new="['$uuid']"
+  else
+    new="${current%]}, '$uuid']"
+  fi
+  run gsettings set org.gnome.shell enabled-extensions "$new"
+}
+
 install_gnome_extension() {
   local uuid="$1"
   local ext_dir="$HOME/.local/share/gnome-shell/extensions/$uuid"
 
   if extension_installed "$uuid"; then
     log "GNOME Shell extension already installed: $uuid"
+    # Self-heal installs made by an older version of this script that
+    # predates the glib-compile-schemas fix below.
+    if [ -d "$ext_dir/schemas" ] && [ ! -f "$ext_dir/schemas/gschemas.compiled" ]; then
+      glib-compile-schemas "$ext_dir/schemas"
+    fi
   elif [ "$DRY_RUN" = true ]; then
     log "dry-run: would download and install GNOME Shell extension $uuid"
   else
@@ -129,9 +169,17 @@ install_gnome_extension() {
     mkdir -p "$ext_dir"
     unzip -q "$zip_path" -d "$ext_dir"
     rm -f "$zip_path"
+
+    # extensions.gnome.org ships raw .gschema.xml files; GNOME Shell refuses
+    # to enable an extension whose schema isn't compiled (silently, from its
+    # own async EnableExtension handler, so gnome-extensions enable below
+    # would otherwise report success while nothing actually got enabled).
+    if [ -d "$ext_dir/schemas" ]; then
+      glib-compile-schemas "$ext_dir/schemas"
+    fi
   fi
 
-  run gnome-extensions enable "$uuid"
+  enable_gnome_extension "$uuid"
 }
 
 install_whitesur_gtk_theme() {
@@ -154,14 +202,30 @@ install_whitesur_cursor_theme() {
   run env -C "$CURSOR_THEME_SRC" bash install.sh
 }
 
-# Reconnects the GTK theme's Dash to Dock CSS overrides; needs the extension
-# installed first, which is why this runs after install_gnome_extension.
+ensure_dock_extension() {
+  if [ "$NEED_VANILLA_DASH_TO_DOCK" = false ]; then
+    log 'a dash-to-dock-compatible extension is already present (Ubuntu ships its own fork as ubuntu-dock); configuring it instead of installing a second dock.'
+    return
+  fi
+  install_gnome_extension dash-to-dock@micxgx.gmail.com \
+    || log 'warning: dash-to-dock extension install failed; install it manually via the Extensions app.'
+}
+
+# Reconnects the GTK theme's Dash to Dock CSS overrides. tweaks.sh only
+# knows how to find the vanilla dash-to-dock@micxgx.gmail.com uuid, so this
+# only applies when that's the extension actually in use (see
+# NEED_VANILLA_DASH_TO_DOCK above); ubuntu-dock gets styled well enough by
+# the GTK theme alone.
 apply_dash_to_dock_theme_fix() {
+  if [ "$NEED_VANILLA_DASH_TO_DOCK" = false ]; then
+    return
+  fi
   if [ "$DRY_RUN" = true ]; then
     log 'dry-run: would run WhiteSur-gtk-theme tweaks.sh --dash-to-dock'
     return
   fi
-  bash "$GTK_THEME_SRC/tweaks.sh" --dash-to-dock
+  bash "$GTK_THEME_SRC/tweaks.sh" --dash-to-dock \
+    || log 'warning: WhiteSur dash-to-dock CSS tweak failed; the dock will still work with default styling.'
 }
 
 install_ulauncher() {
@@ -244,12 +308,17 @@ install_whitesur_gtk_theme
 install_whitesur_icon_theme
 install_whitesur_cursor_theme
 
-install_gnome_extension user-theme@gnome-shell-extensions.gcampax.github.com
-install_gnome_extension dash-to-dock@micxgx.gmail.com
-install_gnome_extension blur-my-shell@aunetx
+# Each install is allowed to fail independently (a transient network hiccup
+# on one extension shouldn't abort the rest of the script).
+install_gnome_extension user-theme@gnome-shell-extensions.gcampax.github.com \
+  || log 'warning: user-theme extension install failed; install it manually via the Extensions app.'
+ensure_dock_extension
+install_gnome_extension blur-my-shell@aunetx \
+  || log 'warning: blur-my-shell extension install failed; install it manually via the Extensions app.'
 apply_dash_to_dock_theme_fix
 
-install_ulauncher
+install_ulauncher \
+  || log 'warning: ulauncher install failed; install it manually from https://ulauncher.io.'
 
 apply_interface_settings
 apply_dock_settings
@@ -259,7 +328,12 @@ if [ "$DRY_RUN" = true ]; then
   log 'Dry run only; nothing was changed.'
 else
   log ''
-  log 'Done. Log out and back in for the GNOME Shell extensions to load, then'
-  log 'confirm User Themes, Dash to Dock, and Blur my Shell are enabled in the'
-  log 'Extensions app. Open Ulauncher once and set its hotkey to Super+Space.'
+  log 'Done. Log out and back in so GNOME Shell picks up the new extensions,'
+  if [ "$NEED_VANILLA_DASH_TO_DOCK" = true ]; then
+    log 'then confirm User Themes, Dash to Dock, and Blur my Shell are enabled'
+  else
+    log 'then confirm User Themes and Blur my Shell are enabled (the dock is'
+    log 'Ubuntu'"'"'s own ubuntu-dock, already enabled, just reconfigured)'
+  fi
+  log 'in the Extensions app. Open Ulauncher once and set its hotkey to Super+Space.'
 fi

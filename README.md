@@ -338,10 +338,13 @@ It refuses to run off macOS, and every setting is reversible with
 [`scripts/gnome-macos-theme.sh`](scripts/gnome-macos-theme.sh) is **opt-in** —
 the installer never runs it. It gives Ubuntu's GNOME desktop a macOS-like
 look and feel: the [WhiteSur](https://github.com/vinceliuice/WhiteSur-gtk-theme)
-GTK/icon/cursor themes, the User Themes, Dash to Dock, and Blur my Shell
-GNOME Shell extensions (installed straight from extensions.gnome.org),
+GTK/icon/cursor themes; the User Themes and Blur my Shell GNOME Shell
+extensions (installed straight from extensions.gnome.org); the Dash to Dock
+extension too, unless a compatible dock is already present — stock Ubuntu
+ships its own fork of it (`ubuntu-dock`) pre-enabled, so the script
+configures that one instead of installing a conflicting second dock;
 [Ulauncher](https://ulauncher.io) as a Spotlight-like launcher (`Ctrl+Space`
-by default; set it to `Super+Space` in its preferences after first launch),
+by default; set it to `Super+Space` in its preferences after first launch);
 and the Inter font as a free SF Pro stand-in. It reads your current
 light/dark preference and applies the matching WhiteSur variant.
 
