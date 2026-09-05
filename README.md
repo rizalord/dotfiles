@@ -129,10 +129,14 @@ cd "$HOME/src/dotfiles"
 # 4. Install the CLI tools and apps (Homebrew on macOS, apt on Ubuntu)
 ./scripts/install-tools.sh
 
-# 5. Start a fresh login shell so the new PATH and plugins load
+# 5. On Ubuntu, make zsh your login shell (macOS has defaulted to zsh
+#    since Catalina, so this is a no-op there — skip it)
+chsh -s "$(command -v zsh)"
+
+# 6. Start a fresh login shell so the new PATH and plugins load
 exec zsh -l
 
-# 6. Verify everything
+# 7. Verify everything
 ./scripts/check.sh --installed --strict-tools
 ```
 
@@ -147,7 +151,13 @@ exec zsh -l
   Bun through `mise`, configures the Docker CLI plugins, and installs the
   optional Codex / Claude Code / opencode CLIs only if they are missing —
   never signs in to anything.
-- Step 5 matters because the installer runs in a child process — it cannot
+- Step 5 only matters on Ubuntu, where the default login shell is `bash`.
+  Skipping it means every *new* terminal window keeps opening `bash` instead
+  of `zsh` — the prompt, aliases, and the `fastfetch` greeting all live in
+  the zsh config, so none of them would ever run. `chsh` asks for your
+  account password and edits `/etc/passwd`; it only affects shells started
+  after it runs, which is exactly what step 6 does for your current session.
+- Step 6 matters because the installer runs in a child process — it cannot
   change your current shell's `PATH`. A new login shell re-reads the config
   and sees the tools.
 
