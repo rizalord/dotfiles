@@ -44,6 +44,11 @@ run() {
   "$@"
 }
 
+if [ "$(id -u)" -eq 0 ]; then
+  printf 'gnome-macos-theme: run this as your normal user, not with sudo. It calls sudo itself for the apt-get steps; running the whole script as root points $HOME at /root and installs everything into the wrong session.\n' >&2
+  exit 1
+fi
+
 if [ "$(uname -s)" != Linux ] || ! command -v apt-get >/dev/null 2>&1; then
   printf 'gnome-macos-theme: this script only supports apt-based Linux (Ubuntu).\n' >&2
   exit 1
@@ -144,7 +149,9 @@ install_whitesur_icon_theme() {
 install_whitesur_cursor_theme() {
   clone_or_update https://github.com/vinceliuice/WhiteSur-cursors.git "$CURSOR_THEME_SRC"
   log 'installing WhiteSur cursor theme.'
-  run bash "$CURSOR_THEME_SRC/install.sh"
+  # Unlike the gtk/icon installers, this one's install.sh copies a relative
+  # "dist" path, so it must be run with its own directory as the cwd.
+  run env -C "$CURSOR_THEME_SRC" bash install.sh
 }
 
 # Reconnects the GTK theme's Dash to Dock CSS overrides; needs the extension
