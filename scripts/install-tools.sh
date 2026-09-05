@@ -287,6 +287,9 @@ fi
 configure_docker_cli_plugins
 verify_docker_cli_plugins
 
+log 'installing Node and Bun via mise.'
+run mise use --global node@latest bun@latest
+
 export NPM_CONFIG_PREFIX="$HOME/.local"
 export PATH="$NPM_CONFIG_PREFIX/bin:$PATH"
 log "NPM_CONFIG_PREFIX=$NPM_CONFIG_PREFIX"
@@ -315,13 +318,12 @@ if [ "$missing_ai_cli" = false ]; then
 fi
 
 run mkdir -p "$NPM_CONFIG_PREFIX/bin"
-run mise use --global node@lts
 
 if [ "$DRY_RUN" = true ]; then
   run mise exec -- npm --version
 else
   if ! mise exec -- npm --version >/dev/null 2>&1; then
-    printf 'missing prerequisite: mise-managed npm. Run "mise use --global node@lts" and ensure mise can execute npm, then rerun this script.\n' >&2
+    printf 'missing prerequisite: mise-managed npm. Run "mise use --global node@latest" and ensure mise can execute npm, then rerun this script.\n' >&2
     exit 1
   fi
 fi

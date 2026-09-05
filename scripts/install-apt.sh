@@ -48,6 +48,15 @@ gnu_target_for_arch() {
   esac
 }
 
+# fastfetch's release assets name arm64 "aarch64" rather than dpkg's "arm64".
+fastfetch_arch_for() {
+  case "$1" in
+    amd64) printf 'amd64\n' ;;
+    arm64) printf 'aarch64\n' ;;
+    *) printf 'unsupported\n' ;;
+  esac
+}
+
 github_latest_asset_url() {
   local repo="$1"
   local asset_pattern="$2"
@@ -163,6 +172,37 @@ install_git_delta() {
   download_url=$(github_latest_asset_url dandavison/delta "^git-delta_[^-]+_${arch}\\.deb\$")
   if [ -z "$download_url" ]; then
     printf 'git-delta: could not find a GitHub release .deb for arch %s; install it manually.\n' "$arch" >&2
+    return 1
+  fi
+
+  deb_path=$(mktemp --suffix=.deb)
+  curl "${CURL_TIMEOUT_OPTS[@]}" -fsSL "$download_url" -o "$deb_path"
+  sudo dpkg -i "$deb_path"
+  rm -f "$deb_path"
+}
+
+install_fastfetch() {
+  if command -v fastfetch >/dev/null 2>&1; then
+    log 'fastfetch already available; installation is skipped.'
+    return
+  fi
+
+  if sudo apt-get install -y fastfetch; then
+    return
+  fi
+
+  local arch fastfetch_arch download_url deb_path
+  arch=$(detect_arch)
+  fastfetch_arch=$(fastfetch_arch_for "$arch")
+  if [ "$fastfetch_arch" = unsupported ]; then
+    printf 'fastfetch: no apt package and no known GitHub release asset for arch %s; install it manually.\n' "$arch" >&2
+    return 1
+  fi
+
+  log 'fastfetch not available via apt; downloading the official .deb from fastfetch-cli/fastfetch releases.'
+  download_url=$(github_latest_asset_url fastfetch-cli/fastfetch "^fastfetch-linux-${fastfetch_arch}\\.deb\$")
+  if [ -z "$download_url" ]; then
+    printf 'fastfetch: could not find a GitHub release .deb for arch %s; install it manually.\n' "$fastfetch_arch" >&2
     return 1
   fi
 
@@ -321,6 +361,7 @@ install_nerd_font() {
 install_core_apt_packages
 install_eza
 install_git_delta
+install_fastfetch
 install_starship
 install_mise
 install_gh

@@ -40,7 +40,7 @@ before.
 | **Prompt** | [Starship](https://starship.rs) — directory, Git state, runtime versions, command duration |
 | **Shell** | autosuggestions, syntax highlighting, history-substring search, cached completion, `fzf` bindings |
 | **Listing / paging** | `eza` aliases, `bat` man pages, `delta` for Git diffs |
-| **Runtimes** | [`mise`](https://mise.jdx.dev) for Node/other languages — no global Homebrew Node |
+| **Runtimes** | [`mise`](https://mise.jdx.dev) pins Node and [Bun](https://bun.sh) (both `latest`) globally, and manages other languages too — no global Homebrew Node |
 | **Containers** | Docker CLI with Buildx and Compose wired up — via Colima on macOS, native Docker Engine on Ubuntu |
 | **Greeting** | `fastfetch` system summary on a new terminal (toggleable) |
 | **Safety** | idempotent installer, timestamped backups, secret/path scanner, CI on every push |
@@ -85,10 +85,11 @@ transparent about *where* each tool comes from, in the same spirit as
   `zoxide`, `zsh-autosuggestions`, `zsh-syntax-highlighting`. (Ubuntu names
   `bat`/`fd`'s binaries `batcat`/`fdfind`; the script symlinks the familiar
   names into `~/.local/bin`.)
-- **Apt first, official GitHub Release as fallback**: `eza` and `git-delta`
-  aren't guaranteed to be on every supported Ubuntu release's apt repo. If
-  apt doesn't have them, the script downloads the binary/`.deb` straight from
-  the project's own GitHub Releases — never a third-party apt repo.
+- **Apt first, official GitHub Release as fallback**: `eza`, `git-delta`, and
+  `fastfetch` aren't guaranteed to be on every supported Ubuntu release's apt
+  repo (`fastfetch` isn't on 24.04's at all). If apt doesn't have them, the
+  script downloads the binary/`.deb` straight from the project's own GitHub
+  Releases — never a third-party apt repo.
 - **Official vendor install script**: `mise` and `starship` (when apt lacks
   the latter) come from `mise.jdx.dev`/`starship.rs`'s own first-party
   installer scripts.
@@ -142,8 +143,8 @@ exec zsh -l
 - `scripts/install-tools.sh` runs `brew bundle` against the
   [`Brewfile`](Brewfile) on macOS, or
   [`scripts/install-apt.sh`](scripts/install-apt.sh) on Ubuntu (see
-  [Ubuntu/Linux notes](#ubuntulinux-notes)). Either way it sets up Node
-  through `mise`, configures the Docker CLI plugins, and installs the
+  [Ubuntu/Linux notes](#ubuntulinux-notes)). Either way it sets up Node and
+  Bun through `mise`, configures the Docker CLI plugins, and installs the
   optional Codex / Claude Code / opencode CLIs only if they are missing —
   never signs in to anything.
 - Step 5 matters because the installer runs in a child process — it cannot
@@ -282,10 +283,11 @@ docker run --rm hello-world
 docker compose version
 ```
 
-**Runtimes** are managed by `mise`:
+**Runtimes** are managed by `mise`. `scripts/install-tools.sh` already pins
+Node and Bun globally to `latest`; add another language the same way:
 
 ```sh
-mise use --global node@lts
+mise use --global python@latest
 ```
 
 ---
