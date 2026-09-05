@@ -65,7 +65,17 @@ if (( $+commands[bat] )); then
 fi
 
 if (( $+commands[fzf] )); then
-  source <(fzf --zsh) 2>/dev/null || true
+  # fzf's built-in `--zsh` integration needs 0.48+; Ubuntu's apt package
+  # (0.44 as of 24.04) lacks it, so fall back to its own legacy scripts.
+  if _fzf_zsh_script=$(fzf --zsh 2>/dev/null); then
+    eval "$_fzf_zsh_script"
+  else
+    for _fzf_legacy_file in /usr/share/doc/fzf/examples/key-bindings.zsh /usr/share/doc/fzf/examples/completion.zsh; do
+      [[ -r "$_fzf_legacy_file" ]] && source "$_fzf_legacy_file"
+    done
+    unset _fzf_legacy_file
+  fi
+  unset _fzf_zsh_script
   export FZF_DEFAULT_OPTS='--height 40% --layout=reverse --border'
   if (( $+commands[fd] )); then
     export FZF_DEFAULT_COMMAND='fd --type f --hidden --follow --exclude .git'
