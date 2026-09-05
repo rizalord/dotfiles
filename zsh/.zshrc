@@ -92,9 +92,9 @@ if (( $+commands[fastfetch] )) && [[ -t 1 && $SHLVL -eq 1 && -z $DOTFILES_NO_FAS
   fastfetch
 fi
 
-# Interactive plugins, installed via Homebrew (macOS) or apt (Debian) and
+# Interactive plugins, installed via Homebrew (macOS) or apt (Ubuntu) and
 # skipped when absent. zsh-history-substring-search isn't packaged for
-# Debian, so it also looks in the git-clone location install-apt.sh uses.
+# Ubuntu, so it also looks in the git-clone location install-apt.sh uses.
 _zsh_plugin_dirs=("${HOMEBREW_PREFIX:-/opt/homebrew}/share" /usr/share)
 _source_zsh_plugin() {
   local plugin_name="$1" plugin_file="$2" dir
